@@ -8,4 +8,6 @@ namespace WindowSwitcher.Lib.Data.Platform.Policies;
 public sealed class NoOpFloatingWindowHandleConfigurator : IFloatingWindowHandleConfigurator
 {
     public void Configure(nint windowHandle) { }
+
+    public void SetOpacity(nint windowHandle, double opacity) { }
 }

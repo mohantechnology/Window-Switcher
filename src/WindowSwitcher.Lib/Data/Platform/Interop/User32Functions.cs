@@ -8,6 +8,8 @@ public static class User32Functions
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_APPWINDOW = 0x00040000;
+    private const int WS_EX_LAYERED = 0x00080000;
+    private const uint LwaAlpha = 0x00000002;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Rect
@@ -90,10 +92,35 @@ public static class User32Functions
     [DllImport("user32.dll")]
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetLayeredWindowAttributes(
+        IntPtr hwnd,
+        uint crKey,
+        byte bAlpha,
+        uint dwFlags
+    );
+
     public static void HideFromAltTab(IntPtr hWnd)
     {
         IntPtr exStyle = GetWindowLongPtr(hWnd, GWL_EXSTYLE);
         IntPtr newStyle = new IntPtr((exStyle.ToInt64() & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW);
         SetWindowLongPtr(hWnd, GWL_EXSTYLE, newStyle);
+    }
+
+    /// <summary>
+    /// Applies constant per-window alpha so the HWND (including DWM thumbnails) shows content beneath.
+    /// </summary>
+    public static void SetWindowOpacity(IntPtr hWnd, byte alpha)
+    {
+        if (hWnd == IntPtr.Zero)
+            return;
+
+        IntPtr exStyle = GetWindowLongPtr(hWnd, GWL_EXSTYLE);
+        long styleValue = exStyle.ToInt64();
+        if ((styleValue & WS_EX_LAYERED) == 0)
+            SetWindowLongPtr(hWnd, GWL_EXSTYLE, new IntPtr(styleValue | WS_EX_LAYERED));
+
+        SetLayeredWindowAttributes(hWnd, 0, alpha, LwaAlpha);
     }
 }

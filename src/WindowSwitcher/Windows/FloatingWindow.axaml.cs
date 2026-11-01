@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Serilog;
 using WindowSwitcher.Controls;
 using WindowSwitcher.Hosting;
@@ -46,16 +47,21 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         Color.FromRgb(255, 185, 0)
     );
     private readonly IBrush _pendingSelectionBorderBrush;
+    private readonly FloatingCloseOverlayWindow _closeOverlay;
     private volatile bool _isPointerInside;
     private bool _closeRequestedByHost;
     private bool _isPreviewSelected;
     private bool _isSelectionPending;
+    private bool _isFloatingContentHovered;
+    private bool _isCloseOverlayHovered;
+    private DispatcherTimer? _closeOverlayHideTimer;
     private readonly IFloatingWindowHost _floatingWindowHost;
     private readonly WinAccessorBase _winAccessorBase;
     private readonly IFloatingPreviewPolicy _floatingPreviewPolicy;
     private readonly IFloatingWindowSettingsService _floatingWindowSettingsService;
     private readonly IWindowKeybindManager _windowKeybindManager;
     private readonly IMetaKeyStateReader _metaKeyStateReader;
+    private readonly IFloatingWindowHandleConfigurator _floatingWindowHandleConfigurator;
     private readonly FloatingWindowService _service;
     public WindowConfig WindowConfig { get; private set; }
 
@@ -86,8 +92,23 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         _metaKeyStateReader = AppServiceProvider.GetRequiredService<IMetaKeyStateReader>();
         var nativeThumbnailRenderer =
             AppServiceProvider.GetRequiredService<INativeThumbnailRenderer>();
-        var floatingWindowHandleConfigurator =
+        _floatingWindowHandleConfigurator =
             AppServiceProvider.GetRequiredService<IFloatingWindowHandleConfigurator>();
+
+        _closeOverlay = new FloatingCloseOverlayWindow(_floatingWindowHandleConfigurator);
+        _closeOverlay.CloseRequested += (_, _) =>
+            _floatingWindowHost.CloseFloatingPreview(WindowConfig.WindowId);
+        _closeOverlay.OverlayPointerEntered += (_, _) =>
+        {
+            _isCloseOverlayHovered = true;
+            CancelCloseOverlayHide();
+            UpdateCloseOverlayVisibility();
+        };
+        _closeOverlay.OverlayPointerExited += (_, _) =>
+        {
+            _isCloseOverlayHovered = false;
+            ScheduleCloseOverlayHide();
+        };
 
         SetInitialWindowSettings();
 
@@ -108,7 +129,11 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
         var platformHandle = TryGetPlatformHandle();
         if (platformHandle is not null)
-            floatingWindowHandleConfigurator.Configure(platformHandle.Handle);
+        {
+            _floatingWindowHandleConfigurator.Configure(platformHandle.Handle);
+            // Handle exists only after Show; re-apply so Win32 layered alpha takes effect.
+            ApplyPreviewOpacity(syncServiceOpacity: true);
+        }
     }
 
     public sealed override void Show()
@@ -277,12 +302,21 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
     private void FloatingRootPointerEntered(object? sender, PointerEventArgs e)
     {
-        ClosePreviewButton.IsVisible = true;
+        _isFloatingContentHovered = true;
+        CancelCloseOverlayHide();
+        UpdateCloseOverlayVisibility();
     }
 
     private void FloatingRootPointerExited(object? sender, PointerEventArgs e)
     {
-        ClosePreviewButton.IsVisible = false;
+        _isFloatingContentHovered = false;
+        ScheduleCloseOverlayHide();
+    }
+
+    private void FloatingWindowPositionChanged(object? sender, PixelPointEventArgs e)
+    {
+        if (_closeOverlay.IsVisible)
+            _closeOverlay.RepositionAbove(this);
     }
 
     private void CanvasPointerEntered(object? sender, PointerEventArgs e)
@@ -331,17 +365,6 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     {
         _isPointerInside = false;
         WindowCanvas.Cursor = DefaultCursor;
-    }
-
-    private void ClosePreviewButtonPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        e.Handled = true;
-    }
-
-    private void ClosePreviewButtonClick(object? sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        _floatingWindowHost.CloseFloatingPreview(WindowConfig.WindowId);
     }
 
     private void FloatingWindowPointerWheelChanged(object? sender, PointerWheelEventArgs e)
@@ -457,12 +480,56 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             FloatingPreviewHoverAdjustment.MaxOpacity
         );
         WindowConfig.PreviewOpacity = opacity;
-        WindowScreenshot.Opacity = opacity;
-        DmaBufPreview.Opacity = opacity;
-        // Constructor applies settings before FloatingWindowService exists; Start() registers
-        // the native thumbnail with WindowConfig.PreviewOpacity.
+
+        // Avalonia Opacity helps on platforms where the compositor honors it; on Windows we also
+        // set WS_EX_LAYERED alpha so the whole HWND (including DWM thumbnails) shows apps beneath.
+        Opacity = opacity;
+        var platformHandle = TryGetPlatformHandle();
+        if (platformHandle is not null)
+            _floatingWindowHandleConfigurator.SetOpacity(platformHandle.Handle, opacity);
+
+        // Keep native thumbnail fully opaque inside this window; window alpha handles fade.
+        // Constructor applies settings before FloatingWindowService exists.
         if (syncServiceOpacity)
-            _service.SetPreviewOpacity(opacity);
+            _service.SetPreviewOpacity(FloatingPreviewHoverAdjustment.MaxOpacity);
+    }
+
+    private void UpdateCloseOverlayVisibility()
+    {
+        if (_closeRequestedByHost)
+        {
+            _closeOverlay.HideOverlay();
+            return;
+        }
+
+        if (_isFloatingContentHovered || _isCloseOverlayHovered)
+            _closeOverlay.ShowAbove(this);
+        else
+            _closeOverlay.HideOverlay();
+    }
+
+    private void ScheduleCloseOverlayHide()
+    {
+        CancelCloseOverlayHide();
+        _closeOverlayHideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _closeOverlayHideTimer.Tick += OnCloseOverlayHideTimerTick;
+        _closeOverlayHideTimer.Start();
+    }
+
+    private void OnCloseOverlayHideTimerTick(object? sender, EventArgs e)
+    {
+        CancelCloseOverlayHide();
+        UpdateCloseOverlayVisibility();
+    }
+
+    private void CancelCloseOverlayHide()
+    {
+        if (_closeOverlayHideTimer is null)
+            return;
+
+        _closeOverlayHideTimer.Stop();
+        _closeOverlayHideTimer.Tick -= OnCloseOverlayHideTimerTick;
+        _closeOverlayHideTimer = null;
     }
 
     private void CanvasPointerMoved(object? sender, PointerEventArgs e)
@@ -475,6 +542,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         WindowConfig.WindowHeight = (Int32)Height;
         WindowConfig.WindowWidth = (Int32)Width;
         _service.OnWindowResized();
+        if (_closeOverlay.IsVisible)
+            _closeOverlay.RepositionAbove(this);
     }
 
     private void WindowPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -491,7 +560,12 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         bool allowClose = StaticData.AppClosing || _closeRequestedByHost;
         e.Cancel = !allowClose;
         if (!e.Cancel)
+        {
+            CancelCloseOverlayHide();
+            _closeOverlay.HideOverlay();
+            _closeOverlay.Close();
             _service.Stop(WindowConfig.WindowId);
+        }
     }
 
     private async Task RenameWindowTitleAsync()
@@ -533,6 +607,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             return;
 
         _closeRequestedByHost = true;
+        CancelCloseOverlayHide();
+        _closeOverlay.HideOverlay();
         _service.Stop(WindowConfig.WindowId);
         Close();
     }

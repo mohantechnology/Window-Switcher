@@ -108,16 +108,16 @@ internal sealed class FloatingWindowService
         if (_isClosing)
             return;
 
-        byte byteOpacity = FloatingPreviewHoverAdjustment.ToByteOpacity(opacity);
-        if (_floatingPreviewPolicy.UseNativeThumbnailPreview)
-        {
-            if (_thumbnailHandle != 0)
-                _nativeThumbnailRenderer.TryUpdateOpacity(_thumbnailHandle, byteOpacity);
+        // Floating window translucency is applied via native window alpha so apps beneath
+        // remain visible. Keep the native thumbnail fully opaque inside that window.
+        if (!_floatingPreviewPolicy.UseNativeThumbnailPreview || _thumbnailHandle == 0)
             return;
-        }
 
-        _windowScreenshot.Opacity = opacity;
-        _dmaBufPreview.Opacity = opacity;
+        byte byteOpacity = FloatingPreviewHoverAdjustment.ToByteOpacity(
+            FloatingPreviewHoverAdjustment.MaxOpacity
+        );
+        _nativeThumbnailRenderer.TryUpdateOpacity(_thumbnailHandle, byteOpacity);
+        _ = opacity; // retained for call-site compatibility; window alpha owns translucency
     }
 
     public void UpdateLayout()
@@ -632,7 +632,10 @@ internal sealed class FloatingWindowService
             (int)(_windowConfig.WindowWidth * scale) - inset,
             (int)(_windowConfig.WindowHeight * scale) - inset
         );
-        byte opacity = FloatingPreviewHoverAdjustment.ToByteOpacity(_windowConfig.PreviewOpacity);
+        // Window.Opacity on FloatingWindow provides translucency; keep DWM thumbnail solid.
+        byte opacity = FloatingPreviewHoverAdjustment.ToByteOpacity(
+            FloatingPreviewHoverAdjustment.MaxOpacity
+        );
         if (
             _nativeThumbnailRenderer.TryRegister(
                 platformHandle.Handle,

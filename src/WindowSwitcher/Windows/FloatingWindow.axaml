@@ -16,6 +16,7 @@
         Topmost="True"
         CanResize="True"
         Resized="FloatingWindowResized"
+        PositionChanged="FloatingWindowPositionChanged"
         PointerReleased="WindowPointerReleased"
         PointerWheelChanged="FloatingWindowPointerWheelChanged"
         Closing="FloatingWindowClosing"
@@ -23,6 +24,7 @@
         WindowDecorations="BorderOnly"
         ExtendClientAreaTitleBarHeightHint="-1"
         x:DataType="windows:MainWindow">
+        <!-- Close button lives in a separate overlay window so it stays fully opaque when this window fades. -->
         <Grid Name="FloatingRoot"
               PointerEntered="FloatingRootPointerEntered"
               PointerExited="FloatingRootPointerExited">
@@ -36,27 +38,5 @@
                                 IsVisible="False" IsHitTestVisible="False" />
                         <Label FontSize="10" Margin="2 0" Padding="0" Foreground="{StaticResource FloatingWindowLabelBrush}" FontWeight="Bold" Name="WindowLabel"><TextBlock>window name</TextBlock></Label>
                 </Canvas>
-                <Button Name="ClosePreviewButton"
-                        Content="×"
-                        Width="20"
-                        Height="20"
-                        Padding="0"
-                        Margin="0 3 3 0"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Top"
-                        HorizontalContentAlignment="Center"
-                        VerticalContentAlignment="Center"
-                        FontSize="13"
-                        FontWeight="Bold"
-                        Foreground="White"
-                        Background="#E53935"
-                        BorderBrush="#B71C1C"
-                        BorderThickness="1"
-                        CornerRadius="3"
-                        ZIndex="100"
-                        IsVisible="False"
-                        ToolTip.Tip="Close preview"
-                        Click="ClosePreviewButtonClick"
-                        PointerPressed="ClosePreviewButtonPointerPressed" />
         </Grid>
 </Window>
