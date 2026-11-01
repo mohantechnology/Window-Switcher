@@ -66,6 +66,15 @@ internal static class KWinScripts
         callDBus(__BUS__, __PATH__, __INTERFACE__, "CompleteActivation", __REQUEST__, target !== undefined);
         """;
 
+    private const string ForegroundQueryTemplate = """
+        "use strict";
+        const active = workspace.activeWindow;
+        let id = "";
+        if (active && String(active).indexOf("X11Window") === -1)
+            id = active.internalId.toString();
+        callDBus(__BUS__, __PATH__, __INTERFACE__, "CompleteForegroundQuery", __REQUEST__, id);
+        """;
+
     /// <summary>
     /// Builds the long-lived script that pushes the window list on every relevant change.
     /// </summary>
@@ -84,6 +93,17 @@ internal static class KWinScripts
         ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
         return ReplaceBridgeTokens(ActivationTemplate, busName)
             .Replace("__WINDOW__", Literal(FormatWindowId(windowId)), StringComparison.Ordinal)
+            .Replace("__REQUEST__", Literal(requestId), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Builds a one-shot script that reports the focused native Wayland window.
+    /// </summary>
+    internal static string BuildForegroundQuery(string busName, string requestId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(busName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
+        return ReplaceBridgeTokens(ForegroundQueryTemplate, busName)
             .Replace("__REQUEST__", Literal(requestId), StringComparison.Ordinal);
     }
 

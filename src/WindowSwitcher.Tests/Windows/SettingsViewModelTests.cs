@@ -12,7 +12,7 @@ public sealed class SettingsViewModelTests
     {
         var repository = new FakeSettingsRepository();
         string appliedColor = string.Empty;
-        var sut = new SettingsViewModel(repository, () => { }, color => appliedColor = color);
+        var sut = CreateSut(repository, color => appliedColor = color);
 
         sut.PreviewHighlightColor = "  #112233  ";
 
@@ -26,7 +26,7 @@ public sealed class SettingsViewModelTests
         var repository = new FakeSettingsRepository();
         repository.Config.EnablePreviews = false;
         int applyActionInvocationCount = 0;
-        var sut = new SettingsViewModel(repository, () => applyActionInvocationCount++, _ => { });
+        var sut = CreateSut(repository, _ => { }, () => applyActionInvocationCount++);
 
         Assert.False(repository.Config.EnablePreviews);
 
@@ -34,6 +34,33 @@ public sealed class SettingsViewModelTests
 
         Assert.True(repository.Config.EnablePreviews);
         Assert.Equal(1, applyActionInvocationCount);
+    }
+
+    [Fact]
+    public void EnablePinFocusedWindow_DefaultsToTrueAndPersistsChanges()
+    {
+        var repository = new FakeSettingsRepository();
+        var sut = CreateSut(repository);
+
+        Assert.True(sut.EnablePinFocusedWindow);
+
+        sut.EnablePinFocusedWindow = false;
+
+        Assert.False(repository.Config.EnablePinFocusedWindow);
+        Assert.False(sut.EnablePinFocusedWindow);
+    }
+
+    private static SettingsViewModel CreateSut(
+        FakeSettingsRepository? repository = null,
+        Action<string>? applyColor = null,
+        Action? applyAction = null
+    )
+    {
+        return new SettingsViewModel(
+            repository ?? new FakeSettingsRepository(),
+            applyAction ?? (() => { }),
+            applyColor ?? (_ => { })
+        );
     }
 
     private sealed class FakeSettingsRepository : ISettingsRepository

@@ -111,6 +111,7 @@ public partial class MainWindow : Window, IFloatingWindowHost
         Title = StaticData.AppName;
 
         _windowKeybindActivator = AppServiceProvider.GetRequiredService<IWindowKeybindActivator>();
+        _windowKeybindActivator.WindowPinRequested += OnWindowPinRequested;
         _previewCoordinator = new FloatingPreviewCoordinator(
             _windowKeybindActivator,
             dispatcher,
@@ -151,6 +152,7 @@ public partial class MainWindow : Window, IFloatingWindowHost
         if (_previewSelectionReset is not null)
             _previewSelectionReset.SelectionPromptChanged -= OnSelectionPromptChanged;
         PropertyChanged -= OnWindowPropertyChanged;
+        _windowKeybindActivator.WindowPinRequested -= OnWindowPinRequested;
         _previewCoordinator.Dispose();
         ViewModel.WindowsConfigs.CollectionChanged -= WindowsConfigsChanged;
         FiltersWindow.Close();
@@ -360,6 +362,14 @@ public partial class MainWindow : Window, IFloatingWindowHost
     private void WindowsConfigsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         _floatingWindowRegistry.SynchronizeWithCollectionChange(e, ViewModel.WindowsConfigs);
+    }
+
+    private void OnWindowPinRequested(object? sender, string windowId)
+    {
+        if (string.IsNullOrWhiteSpace(windowId) || StaticData.AppClosing)
+            return;
+
+        Dispatcher.UIThread.Post(() => ViewModel.TryPinWindow(windowId));
     }
 
     public void ApplySettings()

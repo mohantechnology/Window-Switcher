@@ -376,6 +376,9 @@ public sealed class GlobalWindowKeybindRuntimeServiceTests
     private sealed class FakeWindowKeybindActivator : IWindowKeybindActivator
     {
         public event EventHandler<string>? WindowActivated;
+#pragma warning disable CS0067 // Required by IWindowKeybindActivator; unused in these tests.
+        public event EventHandler<string>? WindowPinRequested;
+#pragma warning restore CS0067
 
         public List<string> ActivatedTargetIds { get; } = [];
 

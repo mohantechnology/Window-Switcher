@@ -40,6 +40,18 @@ public class SettingsViewModel : ObservableObject
             );
     }
 
+    public bool EnablePinFocusedWindow
+    {
+        get => ReadSetting(config => config.EnablePinFocusedWindow);
+        set =>
+            UpdateSetting(
+                nameof(EnablePinFocusedWindow),
+                value,
+                config => config.EnablePinFocusedWindow,
+                (config, currentValue) => config.EnablePinFocusedWindow = currentValue
+            );
+    }
+
     public bool StartMinimized
     {
         get => ReadSetting(config => config.StartMinimized);

@@ -244,4 +244,29 @@ internal sealed class WindowsWinAccessor : WinAccessorBase
             cancellationToken
         );
     }
+
+    public override Task<string?> TryGetForegroundWindowIdAsync(
+        CancellationToken cancellationToken = default
+    )
+    {
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                IntPtr foregroundWindowHandle = User32Functions.GetForegroundWindow();
+                if (foregroundWindowHandle == IntPtr.Zero)
+                    return null;
+
+                User32Functions.GetWindowThreadProcessId(
+                    foregroundWindowHandle,
+                    out uint processId
+                );
+                if (processId == 0 || processId == (uint)Process.GetCurrentProcess().Id)
+                    return null;
+
+                return foregroundWindowHandle.ToString();
+            },
+            cancellationToken
+        );
+    }
 }

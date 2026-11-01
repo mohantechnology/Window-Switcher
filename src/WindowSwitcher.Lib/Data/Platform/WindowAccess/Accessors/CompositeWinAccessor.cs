@@ -61,6 +61,23 @@ internal sealed class CompositeWinAccessor : WinAccessorBase, IAsyncDisposable
         return Route(windowId).TryRenameWindowAsync(windowId, windowTitle, cancellationToken);
     }
 
+    public override async Task<string?> TryGetForegroundWindowIdAsync(
+        CancellationToken cancellationToken = default
+    )
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        string? nativeForeground = await _nativeAccessor
+            .TryGetForegroundWindowIdAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(nativeForeground))
+            return nativeForeground;
+
+        return await _x11Accessor
+            .TryGetForegroundWindowIdAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public override void Dispose()
     {
         if (_disposed)

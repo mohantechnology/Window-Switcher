@@ -29,6 +29,8 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
 
     public HashSet<string> TempWindowIdsBlacklist { get; } = new(StringComparer.Ordinal);
 
+    public HashSet<string> PinnedWindowIds { get; } = new(StringComparer.Ordinal);
+
     public WindowListViewModel(
         IWindowSnapshotProvider windowSnapshotProvider,
         IWindowFilterSettingsProvider windowFilterSettingsProvider,
@@ -93,6 +95,21 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    public bool TryPinWindow(string windowId)
+    {
+        if (string.IsNullOrWhiteSpace(windowId))
+            return false;
+
+        bool alreadyListed = WindowsConfigs.Any(window =>
+            string.Equals(window.WindowId, windowId, StringComparison.Ordinal)
+        );
+        if (alreadyListed || !PinnedWindowIds.Add(windowId))
+            return false;
+
+        _ = FetchWindowsWithFiltersAsync();
+        return true;
+    }
+
     private void ApplyWindowsWithFilters(IReadOnlyCollection<WindowConfig> fetchedWindows)
     {
         WindowFilterSettings filterSettings = _windowFilterSettingsProvider.GetSettings();
@@ -111,9 +128,12 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
             bool isOnBlacklist =
                 filterSettings.BlacklistPrefixes.Contains(fetchedWindow.WindowTitle)
                 || TempWindowIdsBlacklist.Contains(fetchedWindow.WindowId);
-            bool isOnWhiteList = filterSettings.WhitelistPrefixes.Any(prefix =>
-                fetchedWindow.WindowTitle.Contains(prefix, StringComparison.OrdinalIgnoreCase)
-            );
+            bool isPinned = PinnedWindowIds.Contains(fetchedWindow.WindowId);
+            bool isOnWhiteList =
+                isPinned
+                || filterSettings.WhitelistPrefixes.Any(prefix =>
+                    fetchedWindow.WindowTitle.Contains(prefix, StringComparison.OrdinalIgnoreCase)
+                );
             bool isOnWindowsList = existingById.TryGetValue(
                 fetchedWindow.WindowId,
                 out WindowConfig? existingConfig
@@ -145,8 +165,11 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
             if (fetchedIds.Contains(window.WindowId))
                 continue;
 
+            PinnedWindowIds.Remove(window.WindowId);
             WindowsConfigs.RemoveAt(i);
         }
+
+        PinnedWindowIds.RemoveWhere(pinnedWindowId => !fetchedIds.Contains(pinnedWindowId));
 
         if (SelectedWindow is null)
             return;

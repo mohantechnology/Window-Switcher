@@ -76,10 +76,44 @@ public sealed class CompositeWinAccessorTests
         Assert.True(native.Disposed);
     }
 
+    [Fact]
+    public async Task TryGetForegroundWindowIdAsync_PrefersNativeForeground()
+    {
+        var x11 = new FakeAccessor([new WindowConfig { WindowId = X11WindowId }])
+        {
+            ForegroundWindowId = X11WindowId,
+        };
+        var native = new FakeAccessor([new WindowConfig { WindowId = NativeWindowId }])
+        {
+            ForegroundWindowId = NativeWindowId,
+        };
+        using var sut = new CompositeWinAccessor(x11, native);
+
+        string? foreground = await sut.TryGetForegroundWindowIdAsync();
+
+        Assert.Equal(NativeWindowId, foreground);
+    }
+
+    [Fact]
+    public async Task TryGetForegroundWindowIdAsync_FallsBackToX11()
+    {
+        var x11 = new FakeAccessor([new WindowConfig { WindowId = X11WindowId }])
+        {
+            ForegroundWindowId = X11WindowId,
+        };
+        var native = new FakeAccessor([]) { ForegroundWindowId = null };
+        using var sut = new CompositeWinAccessor(x11, native);
+
+        string? foreground = await sut.TryGetForegroundWindowIdAsync();
+
+        Assert.Equal(X11WindowId, foreground);
+    }
+
     private sealed class FakeAccessor(IReadOnlyCollection<WindowConfig>? windows) : WinAccessorBase
     {
         public List<string> Calls { get; } = [];
         public bool Disposed { get; private set; }
+        public string? ForegroundWindowId { get; init; }
 
         public override Task<IReadOnlyCollection<WindowConfig>?> TryGetWindowsAsync(
             CancellationToken cancellationToken = default
@@ -102,6 +136,14 @@ public sealed class CompositeWinAccessorTests
         {
             Calls.Add(windowId);
             return Task.FromResult(true);
+        }
+
+        public override Task<string?> TryGetForegroundWindowIdAsync(
+            CancellationToken cancellationToken = default
+        )
+        {
+            Calls.Add("foreground");
+            return Task.FromResult(ForegroundWindowId);
         }
 
         public override void Dispose() => Disposed = true;

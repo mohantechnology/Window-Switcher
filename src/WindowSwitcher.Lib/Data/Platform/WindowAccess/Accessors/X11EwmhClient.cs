@@ -92,6 +92,32 @@ internal sealed class X11EwmhClient : IX11EwmhClient
         }
     }
 
+    public uint? TryGetActiveWindowId()
+    {
+        lock (_syncRoot)
+        {
+            if (!EnsureConnected())
+                return null;
+
+            try
+            {
+                uint activeWindowId = ReadActiveWindowId();
+                return activeWindowId == 0 ? null : activeWindowId;
+            }
+            catch (Exception exception)
+                when (exception
+                        is DllNotFoundException
+                            or EntryPointNotFoundException
+                            or BadImageFormatException
+                )
+            {
+                Logger.Error(exception, "X11 EWMH active window query failed");
+                Disconnect();
+                return null;
+            }
+        }
+    }
+
     public bool TryActivateWindow(uint windowId)
     {
         lock (_syncRoot)

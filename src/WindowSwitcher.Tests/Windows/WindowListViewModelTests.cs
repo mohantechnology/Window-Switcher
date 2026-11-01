@@ -68,6 +68,56 @@ public sealed class WindowListViewModelTests
     }
 
     [Fact]
+    public async Task TryPinWindow_AddsNonWhitelistedWindow()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
+            new WindowConfig { WindowId = "2", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Equal("2", Assert.Single(sut.WindowsConfigs).WindowId);
+
+        Assert.True(sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Equal(2, sut.WindowsConfigs.Count);
+        Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
+        Assert.Contains("1", sut.PinnedWindowIds);
+    }
+
+    [Fact]
+    public async Task TryPinWindow_ReturnsFalseWhenPreviewAlreadyExists()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.False(sut.TryPinWindow("1"));
+        Assert.DoesNotContain("1", sut.PinnedWindowIds);
+    }
+
+    [Fact]
+    public async Task FetchWindowsWithFiltersAsync_DropsPinWhenWindowCloses()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        Assert.True(sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Single(sut.WindowsConfigs);
+
+        snapshotProvider.Windows = [];
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Empty(sut.WindowsConfigs);
+        Assert.Empty(sut.PinnedWindowIds);
+    }
+
+    [Fact]
     public async Task PeriodicRefresh_LogsErrorAndKeepsRefreshing_WhenSnapshotProviderThrows()
     {
         var failure = new InvalidOperationException("snapshot failure");

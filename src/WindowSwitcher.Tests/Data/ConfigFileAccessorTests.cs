@@ -1,6 +1,7 @@
 using System.Reflection;
 using WindowSwitcher.Lib.Data;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Models;
+using WindowSwitcher.Lib.Data.Platform.Keybinds.Utilities;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Pipewire;
 using WindowSwitcher.Lib.Models;
 using Xunit;
@@ -24,6 +25,22 @@ public sealed class ConfigFileAccessorTests
             Assert.NotNull(sut.Config.BlacklistPrefixes);
             Assert.NotNull(sut.Config.FloatingWindowsConfig);
             Assert.NotNull(sut.Config.WindowKeybindTargets);
+            WindowKeybindTargetConfig pinTarget = Assert.Single(
+                sut.Config.WindowKeybindTargets,
+                target =>
+                    target.TargetId == KeybindBuiltInTargets.PinFocusedWindowTargetId
+            );
+            WindowKeybindShortcut pinShortcut = Assert.Single(pinTarget.Shortcuts);
+            Assert.True(pinShortcut.Combination.Meta);
+            Assert.True(pinShortcut.Combination.Alt);
+            Assert.False(pinShortcut.Combination.Ctrl);
+            Assert.False(pinShortcut.Combination.Shift);
+            Assert.Equal(KeybindPrimaryKey.Q, pinShortcut.Combination.Key);
+            Assert.Equal(
+                "Alt+Meta+Q",
+                KeyCombinationParser.ToCanonicalString(pinShortcut.Combination)
+            );
+            Assert.True(sut.Config.EnablePinFocusedWindow);
             Assert.Equal(new ConfigFile().SentryDsn, sut.Config.SentryDsn);
             Assert.True(Guid.TryParse(sut.Config.TelemetryInstallationId, out _));
         }
@@ -99,12 +116,46 @@ public sealed class ConfigFileAccessorTests
             );
             Assert.Equal("proc|my title", persistedConfig.ConfigKey);
 
-            WindowKeybindTargetConfig keybindTarget = Assert.Single(config.WindowKeybindTargets);
-            Assert.Equal("proc|editor", keybindTarget.TargetId);
+            WindowKeybindTargetConfig keybindTarget = Assert.Single(
+                config.WindowKeybindTargets,
+                target => target.TargetId == "proc|editor"
+            );
             Assert.Equal("Editor Window", keybindTarget.DisplayLabel);
             WindowKeybindShortcut shortcut = Assert.Single(keybindTarget.Shortcuts);
             Assert.True(shortcut.Combination.Ctrl);
             Assert.Equal(KeybindPrimaryKey.A, shortcut.Combination.Key);
+            Assert.Contains(
+                config.WindowKeybindTargets,
+                target => target.TargetId == KeybindBuiltInTargets.PinFocusedWindowTargetId
+            );
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void NormalizeConfig_DoesNotReseedPinShortcut_WhenTargetExistsEmpty()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            var sut = CreateAccessor(dataFolder);
+            sut.SaveWindowKeybindTargets([
+                new WindowKeybindTargetConfig
+                {
+                    TargetId = KeybindBuiltInTargets.PinFocusedWindowTargetId,
+                    DisplayLabel = KeybindBuiltInTargets.PinFocusedWindowDisplayName,
+                    Shortcuts = [],
+                },
+            ]);
+
+            WindowKeybindTargetConfig pinTarget = Assert.Single(
+                sut.Config.WindowKeybindTargets,
+                target => target.TargetId == KeybindBuiltInTargets.PinFocusedWindowTargetId
+            );
+            Assert.Empty(pinTarget.Shortcuts);
         }
         finally
         {

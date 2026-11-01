@@ -2,6 +2,7 @@ using System.Reflection;
 using WindowSwitcher.Lib.Data;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Models;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Services;
+using WindowSwitcher.Lib.Data.Platform.Keybinds.Utilities;
 using Xunit;
 
 namespace WindowSwitcher.Tests.Platform.Keybinds;
@@ -93,7 +94,91 @@ public sealed class WindowKeybindManagerTests
 
             Assert.True(removed);
             Assert.False(resolvedAfterRemoval);
-            Assert.Empty(sut.GetTargets());
+            Assert.DoesNotContain(
+                sut.GetTargets(),
+                target => target.TargetId == "proc|editor"
+            );
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void RemoveBinding_KeepsBuiltInPinTargetWhenEmpty()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            ConfigFileAccessor accessor = CreateAccessor(dataFolder);
+            var sut = new WindowKeybindManager(accessor);
+            var combination = new KeyCombination
+            {
+                Meta = true,
+                Alt = true,
+                Key = KeybindPrimaryKey.Q,
+            };
+
+            WindowKeybindShortcut existing = Assert.Single(
+                sut.GetShortcutsForTarget(KeybindBuiltInTargets.PinFocusedWindowTargetId)
+            );
+            Assert.True(existing.Combination.Equals(combination));
+
+            Assert.True(
+                sut.RemoveShortcut(KeybindBuiltInTargets.PinFocusedWindowTargetId, combination)
+            );
+
+            Assert.Contains(
+                sut.GetTargets(),
+                target => target.TargetId == KeybindBuiltInTargets.PinFocusedWindowTargetId
+            );
+            Assert.Empty(
+                sut.GetShortcutsForTarget(KeybindBuiltInTargets.PinFocusedWindowTargetId)
+            );
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void PinFocusedWindowShortcut_DefaultsToMetaAltQ_AndCanBeChanged()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            ConfigFileAccessor accessor = CreateAccessor(dataFolder);
+            var sut = new WindowKeybindManager(accessor);
+            var defaultCombination = new KeyCombination
+            {
+                Meta = true,
+                Alt = true,
+                Key = KeybindPrimaryKey.Q,
+            };
+            var replacement = new KeyCombination { Ctrl = true, Key = KeybindPrimaryKey.F9 };
+
+            WindowKeybindShortcut seeded = Assert.Single(
+                sut.GetShortcutsForTarget(KeybindBuiltInTargets.PinFocusedWindowTargetId)
+            );
+            Assert.Equal(defaultCombination, seeded.Combination);
+            Assert.True(sut.TryResolveTarget(defaultCombination, out string defaultTargetId));
+            Assert.Equal(KeybindBuiltInTargets.PinFocusedWindowTargetId, defaultTargetId);
+
+            Assert.True(
+                sut.RemoveShortcut(KeybindBuiltInTargets.PinFocusedWindowTargetId, defaultCombination)
+            );
+            KeybindShortcutAddResult added = sut.AddShortcut(
+                KeybindBuiltInTargets.PinFocusedWindowTargetId,
+                KeybindBuiltInTargets.PinFocusedWindowDisplayName,
+                replacement
+            );
+
+            Assert.Equal(KeybindRegistrationResult.Added, added.Status);
+            Assert.True(sut.TryResolveTarget(replacement, out string replacementTargetId));
+            Assert.Equal(KeybindBuiltInTargets.PinFocusedWindowTargetId, replacementTargetId);
+            Assert.False(sut.TryResolveTarget(defaultCombination, out _));
         }
         finally
         {

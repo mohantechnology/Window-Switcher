@@ -28,6 +28,8 @@
                                   IsChecked="{Binding FocusOnHover, Mode=TwoWay}" />
                         <CheckBox Content="Enable previews"
                                   IsChecked="{Binding EnablePreviews, Mode=TwoWay}" />
+                        <CheckBox Content="Enable pin focused window"
+                                  IsChecked="{Binding EnablePinFocusedWindow, Mode=TwoWay}" />
                         <CheckBox Content="Start minimized"
                                   IsChecked="{Binding StartMinimized, Mode=TwoWay}" />
                 </StackPanel>

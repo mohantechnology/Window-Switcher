@@ -550,6 +550,7 @@ public class ConfigFileAccessor
             .Build(config.WindowKeybindTargets)
             .Targets.Select(KeybindCatalogBuilder.CloneTarget)
             .ToList();
+        EnsureDefaultPinFocusedWindowShortcut(config);
 
         config.ScreenCastRestoreTokens = (config.ScreenCastRestoreTokens ?? [])
             .Where(entry =>
@@ -558,6 +559,45 @@ public class ConfigFileAccessor
             .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
 
         return config;
+    }
+
+    private static void EnsureDefaultPinFocusedWindowShortcut(ConfigFile config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        WindowKeybindTargetConfig? pinTarget = config.WindowKeybindTargets.FirstOrDefault(target =>
+            string.Equals(
+                target.TargetId,
+                KeybindBuiltInTargets.PinFocusedWindowTargetId,
+                StringComparison.Ordinal
+            )
+        );
+        if (pinTarget is not null)
+        {
+            if (string.IsNullOrWhiteSpace(pinTarget.DisplayLabel))
+                pinTarget.DisplayLabel = KeybindBuiltInTargets.PinFocusedWindowDisplayName;
+            return;
+        }
+
+        var shortcuts = new List<WindowKeybindShortcut>();
+        var defaultCombination = new KeyCombination
+        {
+            Meta = true,
+            Alt = true,
+            Key = KeybindPrimaryKey.Q,
+        };
+        KeybindCatalog catalog = KeybindCatalogBuilder.Build(config.WindowKeybindTargets);
+        if (!catalog.TryResolveTarget(defaultCombination, out _))
+            shortcuts.Add(new WindowKeybindShortcut { Combination = defaultCombination });
+
+        config.WindowKeybindTargets.Add(
+            new WindowKeybindTargetConfig
+            {
+                TargetId = KeybindBuiltInTargets.PinFocusedWindowTargetId,
+                DisplayLabel = KeybindBuiltInTargets.PinFocusedWindowDisplayName,
+                Shortcuts = shortcuts,
+            }
+        );
     }
 
     private static ConfigFile CloneConfig(ConfigFile config)
@@ -577,6 +617,7 @@ public class ConfigFileAccessor
             WindowHeight = config.WindowHeight,
             PreviewHighlightColor = config.PreviewHighlightColor,
             EnablePreviews = config.EnablePreviews,
+            EnablePinFocusedWindow = config.EnablePinFocusedWindow,
             WhitelistPrefixes = config.WhitelistPrefixes.ToList(),
             BlacklistPrefixes = config.BlacklistPrefixes.ToList(),
             FloatingWindowsConfig = config

@@ -127,6 +127,37 @@ internal sealed class X11EwmhWindowAccessor : WinAccessorBase
             .ConfigureAwait(false);
     }
 
+    public override async Task<string?> TryGetForegroundWindowIdAsync(
+        CancellationToken cancellationToken = default
+    )
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            uint? activeWindowId = await Task.Run(
+                    _client.TryGetActiveWindowId,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return activeWindowId is null or 0 ? null : FormatWindowId(activeWindowId.Value);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(exception, "X11 EWMH active window query failed");
+            return null;
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
     public override void Dispose()
     {
         if (_disposed)

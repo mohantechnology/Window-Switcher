@@ -21,6 +21,11 @@ public static class KeybindBuiltInTargets
     public const string FocusActiveClientTargetId = "action:focus-active-client";
 
     /// <summary>
+    /// Target id for pinning the currently focused OS window into the preview list.
+    /// </summary>
+    public const string PinFocusedWindowTargetId = "action:pin-focused-window";
+
+    /// <summary>
     /// Display label for next selected client action.
     /// </summary>
     public const string NextClientDisplayName = "Next client";
@@ -36,6 +41,11 @@ public static class KeybindBuiltInTargets
     public const string FocusActiveClientDisplayName = "Focus active client";
 
     /// <summary>
+    /// Display label for pin focused window action.
+    /// </summary>
+    public const string PinFocusedWindowDisplayName = "Pin focused window";
+
+    /// <summary>
     /// Returns whether a target id is one of the built-in action targets.
     /// </summary>
     public static bool IsBuiltInTarget(string? targetId)
@@ -46,6 +56,7 @@ public static class KeybindBuiltInTargets
         string normalized = targetId.Trim().ToLowerInvariant();
         return normalized == NextClientTargetId
             || normalized == PreviousClientTargetId
-            || normalized == FocusActiveClientTargetId;
+            || normalized == FocusActiveClientTargetId
+            || normalized == PinFocusedWindowTargetId;
     }
 }

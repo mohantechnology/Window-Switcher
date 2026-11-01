@@ -142,6 +142,26 @@ public sealed class X11EwmhWindowAccessorTests
     }
 
     [Fact]
+    public async Task TryGetForegroundWindowIdAsync_FormatsActiveWindowId()
+    {
+        var client = new FakeX11EwmhClient { ActiveWindowId = 42 };
+        using var sut = new X11EwmhWindowAccessor(client);
+
+        string? windowId = await sut.TryGetForegroundWindowIdAsync();
+
+        Assert.Equal("0x0000002a", windowId);
+    }
+
+    [Fact]
+    public async Task TryGetForegroundWindowIdAsync_ReturnsNullWhenUnavailable()
+    {
+        var client = new FakeX11EwmhClient { ActiveWindowId = null };
+        using var sut = new X11EwmhWindowAccessor(client);
+
+        Assert.Null(await sut.TryGetForegroundWindowIdAsync());
+    }
+
+    [Fact]
     public async Task TryGetWindowsAsync_ReturnsNull_WhenClientListCannotBeRead()
     {
         using var sut = new X11EwmhWindowAccessor(new FakeX11EwmhClient { Windows = null });
@@ -242,6 +262,10 @@ public sealed class X11EwmhWindowAccessorTests
             RenamedWindow = (windowId, title);
             return true;
         }
+
+        public uint? ActiveWindowId { get; set; }
+
+        public uint? TryGetActiveWindowId() => Failure is null ? ActiveWindowId : throw Failure;
 
         public void Dispose() { }
     }
