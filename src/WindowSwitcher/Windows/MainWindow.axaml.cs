@@ -139,12 +139,21 @@ public partial class MainWindow : Window, IFloatingWindowHost
         }
 
         if (_configurationService.ShouldStartMinimized())
-            Dispatcher.UIThread.Post(HideToTray, DispatcherPriority.Background);
+        {
+            ShowInTaskbar = false;
+            Opened += OnOpenedHideToTray;
+        }
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        StaticData.AppClosing = true;
+        if (!StaticData.AppClosing)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
         if (!_updateNotificationCts.IsCancellationRequested)
             _updateNotificationCts.Cancel();
         if (OperatingSystem.IsLinux())
@@ -168,6 +177,15 @@ public partial class MainWindow : Window, IFloatingWindowHost
         base.OnClosing(e);
     }
 
+    public void QuitFromTray()
+    {
+        if (StaticData.AppClosing)
+            return;
+
+        StaticData.AppClosing = true;
+        Close();
+    }
+
     public void RestoreFromTray()
     {
         if (_isHiddenToTray)
@@ -179,6 +197,7 @@ public partial class MainWindow : Window, IFloatingWindowHost
         _isHiddenToTray = false;
         SetWindowStateWithoutTrayHandling(WindowState.Normal);
         Activate();
+        UpdateWindowListRefreshState();
     }
 
     private void HideToTray()
@@ -190,6 +209,22 @@ public partial class MainWindow : Window, IFloatingWindowHost
         ShowInTaskbar = false;
         SetWindowStateWithoutTrayHandling(WindowState.Normal);
         Hide();
+        UpdateWindowListRefreshState();
+    }
+
+    private void OnOpenedHideToTray(object? sender, EventArgs e)
+    {
+        Opened -= OnOpenedHideToTray;
+        HideToTray();
+    }
+
+    private void UpdateWindowListRefreshState()
+    {
+        bool shouldRefresh = !_isHiddenToTray || _floatingWindowRegistry.Count > 0;
+        if (shouldRefresh)
+            ViewModel.ResumeRefresh();
+        else
+            ViewModel.PauseRefresh();
     }
 
     private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -362,6 +397,7 @@ public partial class MainWindow : Window, IFloatingWindowHost
     private void WindowsConfigsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         _floatingWindowRegistry.SynchronizeWithCollectionChange(e, ViewModel.WindowsConfigs);
+        UpdateWindowListRefreshState();
     }
 
     private void OnWindowPinRequested(object? sender, string windowId)
@@ -379,9 +415,6 @@ public partial class MainWindow : Window, IFloatingWindowHost
 
     private void RequestApplicationShutdown()
     {
-        if (StaticData.AppClosing)
-            return;
-
-        Close();
+        QuitFromTray();
     }
 }

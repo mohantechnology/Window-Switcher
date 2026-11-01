@@ -74,6 +74,7 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\\${APP_NAME}\\${APP_NAME}.lnk"
   RMDir "$SMPROGRAMS\\${APP_NAME}"
 
+  DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "WindowSwitcher"
   DeleteRegKey HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${APP_NAME}"
   DeleteRegKey HKCU "Software\\${APP_PUBLISHER}\\${APP_NAME}"
 

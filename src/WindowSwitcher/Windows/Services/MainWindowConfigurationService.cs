@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using WindowSwitcher.Hosting;
 using WindowSwitcher.Lib.Data;
 
 namespace WindowSwitcher.Windows.Services;
@@ -37,6 +38,9 @@ internal sealed class ConfigFileMainWindowConfigurationService : IMainWindowConf
 
     public bool ShouldStartMinimized()
     {
+        if (StartupArguments.StartInBackground)
+            return true;
+
         return ConfigFileAccessor.GetInstance().ReadConfig(config => config.StartMinimized);
     }
 

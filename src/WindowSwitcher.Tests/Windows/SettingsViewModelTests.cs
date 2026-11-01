@@ -1,3 +1,4 @@
+using WindowSwitcher.Lib.Data.Platform.Autostart.Abstractions;
 using WindowSwitcher.Lib.Models;
 using WindowSwitcher.ViewModels;
 using WindowSwitcher.ViewModels.Abstractions;
@@ -50,17 +51,63 @@ public sealed class SettingsViewModelTests
         Assert.False(sut.EnablePinFocusedWindow);
     }
 
+    [Fact]
+    public async Task AutoStartInBackground_PersistsAndAppliesWhenServiceSucceeds()
+    {
+        var repository = new FakeSettingsRepository();
+        repository.Config.AutoStartInBackground = false;
+        var autoStart = new FakeAutoStartService();
+        var sut = CreateSut(repository, autoStartService: autoStart);
+
+        Assert.False(sut.AutoStartInBackground);
+
+        sut.AutoStartInBackground = true;
+        await WaitForAsync(() => repository.Config.AutoStartInBackground);
+
+        Assert.True(sut.AutoStartInBackground);
+        Assert.True(autoStart.Enabled);
+        Assert.False(sut.HasAutoStartError);
+    }
+
+    [Fact]
+    public async Task AutoStartInBackground_RevertsAndSurfacesErrorWhenServiceFails()
+    {
+        var repository = new FakeSettingsRepository();
+        repository.Config.AutoStartInBackground = true;
+        var autoStart = new FakeAutoStartService
+        {
+            SetEnabledException = new InvalidOperationException("denied"),
+        };
+        var sut = CreateSut(repository, autoStartService: autoStart);
+
+        sut.AutoStartInBackground = false;
+        await WaitForAsync(() => sut.HasAutoStartError);
+
+        Assert.True(sut.AutoStartInBackground);
+        Assert.True(repository.Config.AutoStartInBackground);
+        Assert.Contains("auto-start", sut.AutoStartError, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static SettingsViewModel CreateSut(
         FakeSettingsRepository? repository = null,
         Action<string>? applyColor = null,
-        Action? applyAction = null
+        Action? applyAction = null,
+        IAutoStartService? autoStartService = null
     )
     {
         return new SettingsViewModel(
             repository ?? new FakeSettingsRepository(),
+            autoStartService ?? new FakeAutoStartService(),
             applyAction ?? (() => { }),
             applyColor ?? (_ => { })
         );
+    }
+
+    private static async Task WaitForAsync(Func<bool> probe)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!probe())
+            await Task.Delay(25, timeout.Token);
     }
 
     private sealed class FakeSettingsRepository : ISettingsRepository
@@ -75,6 +122,27 @@ public sealed class SettingsViewModelTests
         public void Update(Action<ConfigFile> update)
         {
             update(Config);
+        }
+    }
+
+    private sealed class FakeAutoStartService : IAutoStartService
+    {
+        public bool Enabled { get; private set; }
+
+        public Exception? SetEnabledException { get; set; }
+
+        public Task<bool> IsEnabledAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Enabled);
+        }
+
+        public Task SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            if (SetEnabledException is not null)
+                return Task.FromException(SetEnabledException);
+
+            Enabled = enabled;
+            return Task.CompletedTask;
         }
     }
 }

@@ -32,6 +32,13 @@
                                   IsChecked="{Binding EnablePinFocusedWindow, Mode=TwoWay}" />
                         <CheckBox Content="Start minimized"
                                   IsChecked="{Binding StartMinimized, Mode=TwoWay}" />
+                        <CheckBox Content="Auto start on every boot"
+                                  IsChecked="{Binding AutoStartInBackground, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding AutoStartError}"
+                                   IsVisible="{Binding HasAutoStartError}"
+                                   TextWrapping="Wrap"
+                                   Foreground="IndianRed"
+                                   MaxWidth="280" />
                 </StackPanel>
 
                 <StackPanel Spacing="6">

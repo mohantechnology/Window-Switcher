@@ -20,6 +20,9 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
     private readonly IViewModelDispatcher _dispatcher;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly object _pauseSync = new();
+    private TaskCompletionSource _resumeTcs = CreateCompletedResumeSignal();
+    private bool _isPaused;
 
     [ObservableProperty]
     private ObservableCollection<WindowConfig> _windowsConfigs = new();
@@ -58,6 +61,17 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
+                Task resumeSignal;
+                lock (_pauseSync)
+                    resumeSignal = _resumeTcs.Task;
+
+                await resumeSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+                bool isPaused;
+                lock (_pauseSync)
+                    isPaused = _isPaused;
+                if (isPaused)
+                    continue;
+
                 await RefreshWindowsAsync(cancellationToken).ConfigureAwait(false);
             }
         }
@@ -67,12 +81,64 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Stops periodic window-list polling until <see cref="ResumeRefresh"/> is called.
+    /// </summary>
+    public void PauseRefresh()
+    {
+        lock (_pauseSync)
+        {
+            if (_isPaused)
+                return;
+
+            _isPaused = true;
+            _resumeTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
+    /// <summary>
+    /// Resumes periodic window-list polling and requests an immediate refresh.
+    /// </summary>
+    public void ResumeRefresh()
+    {
+        TaskCompletionSource? resumeSignal = null;
+        lock (_pauseSync)
+        {
+            if (!_isPaused)
+                return;
+
+            _isPaused = false;
+            resumeSignal = _resumeTcs;
+        }
+
+        resumeSignal?.TrySetResult();
+        _ = FetchWindowsWithFiltersAsync();
+    }
+
+    public bool IsRefreshPaused
+    {
+        get
+        {
+            lock (_pauseSync)
+                return _isPaused;
+        }
+    }
+
     public void Dispose()
     {
         if (_cts.IsCancellationRequested)
             return;
         _cts.Cancel();
+        lock (_pauseSync)
+            _resumeTcs.TrySetResult();
         _cts.Dispose();
+    }
+
+    private static TaskCompletionSource CreateCompletedResumeSignal()
+    {
+        var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        signal.SetResult();
+        return signal;
     }
 
     public async Task FetchWindowsWithFiltersAsync(CancellationToken cancellationToken = default)

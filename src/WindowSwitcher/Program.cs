@@ -15,6 +15,8 @@ static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        StartupArguments.Initialize(args);
+
         using var mutex = new Mutex(false, "{8A6F0BA4-B5B1-45fd-A8CF-71F04B6BDE8F}");
 
         // Only one instance of the app running !

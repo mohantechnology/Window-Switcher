@@ -11,6 +11,7 @@ using Serilog;
 using WindowSwitcher.Diagnostics;
 using WindowSwitcher.Hosting;
 using WindowSwitcher.Lib.Data;
+using WindowSwitcher.Lib.Data.Platform.Autostart.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.SystemInfo.Abstractions;
 using WindowSwitcher.Theming;
@@ -96,8 +97,32 @@ public partial class App : Application
             globalKeyboardStartupStatusService,
             GlobalKeyboardCts.Token
         );
+        _ = SynchronizeAutoStartRegistrationAsync(GlobalKeyboardCts.Token);
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static async Task SynchronizeAutoStartRegistrationAsync(
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            IAutoStartService autoStartService =
+                AppServiceProvider.GetRequiredService<IAutoStartService>();
+            bool desired = ConfigFileAccessor
+                .GetInstance()
+                .ReadConfig(config => config.AutoStartInBackground);
+            await autoStartService.SetEnabledAsync(desired, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutdown path.
+        }
+        catch (Exception exception)
+        {
+            Logger.Warning(exception, "Auto-start registration could not be synchronized");
+        }
     }
 
     private static void ApplyAccentColorFromConfig()
@@ -122,7 +147,7 @@ public partial class App : Application
 
     private void ExitMenuItemClicked(object? sender, EventArgs e)
     {
-        MainWindow?.Close();
+        MainWindow?.QuitFromTray();
     }
 
     private void OpenMenuItemClicked(object? sender, EventArgs e)

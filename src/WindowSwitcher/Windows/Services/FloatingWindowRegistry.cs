@@ -71,6 +71,8 @@ internal sealed class FloatingWindowRegistry
         }
     }
 
+    public int Count => _windows.Count;
+
     public bool TryGet(string windowId, out FloatingWindow floatingWindow)
     {
         if (string.IsNullOrWhiteSpace(windowId))

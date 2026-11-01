@@ -609,6 +609,7 @@ public class ConfigFileAccessor
             ResizeWindows = config.ResizeWindows,
             MoveWindows = config.MoveWindows,
             StartMinimized = config.StartMinimized,
+            AutoStartInBackground = config.AutoStartInBackground,
             SentryDsn = config.SentryDsn,
             TelemetryInstallationId = config.TelemetryInstallationId,
             UseFixedWindowSize = config.UseFixedWindowSize,

@@ -118,6 +118,43 @@ public sealed class WindowListViewModelTests
     }
 
     [Fact]
+    public void PauseRefresh_MarksRefreshAsPaused_UntilResume()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+
+        Assert.False(sut.IsRefreshPaused);
+
+        sut.PauseRefresh();
+        Assert.True(sut.IsRefreshPaused);
+
+        sut.ResumeRefresh();
+        Assert.False(sut.IsRefreshPaused);
+    }
+
+    [Fact]
+    public async Task ResumeRefresh_FetchesWindowsImmediately()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        sut.PauseRefresh();
+        snapshotProvider.Windows =
+        [
+            new WindowConfig { WindowId = "2", WindowTitle = "Game launcher" },
+        ];
+
+        sut.ResumeRefresh();
+        WindowConfig window = await WaitForAsync(() => sut.WindowsConfigs.FirstOrDefault());
+
+        Assert.Equal("2", window.WindowId);
+        Assert.False(sut.IsRefreshPaused);
+    }
+
+    [Fact]
     public async Task PeriodicRefresh_LogsErrorAndKeepsRefreshing_WhenSnapshotProviderThrows()
     {
         var failure = new InvalidOperationException("snapshot failure");

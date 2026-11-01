@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Serilog;
+using WindowSwitcher.Lib.Data.Platform.Autostart.Abstractions;
 using WindowSwitcher.Lib.Models;
 using WindowSwitcher.ViewModels.Abstractions;
 
@@ -8,23 +11,33 @@ namespace WindowSwitcher.ViewModels;
 
 public class SettingsViewModel : ObservableObject
 {
+    private static readonly ILogger Logger = Log.ForContext<SettingsViewModel>();
+
     private readonly ISettingsRepository _settingsRepository;
+    private readonly IAutoStartService _autoStartService;
     private readonly Action _applyAction;
     private readonly Action<string> _applyPreviewHighlightColorAction;
+    private bool _autoStartInBackground;
+    private bool _isUpdatingAutoStart;
+    private string _autoStartError = string.Empty;
 
     public SettingsViewModel(
         ISettingsRepository settingsRepository,
+        IAutoStartService autoStartService,
         Action applyAction,
         Action<string> applyPreviewHighlightColorAction
     )
     {
         ArgumentNullException.ThrowIfNull(settingsRepository);
+        ArgumentNullException.ThrowIfNull(autoStartService);
         ArgumentNullException.ThrowIfNull(applyAction);
         ArgumentNullException.ThrowIfNull(applyPreviewHighlightColorAction);
 
         _settingsRepository = settingsRepository;
+        _autoStartService = autoStartService;
         _applyAction = applyAction;
         _applyPreviewHighlightColorAction = applyPreviewHighlightColorAction;
+        _autoStartInBackground = _settingsRepository.Read(config => config.AutoStartInBackground);
     }
 
     public bool EnablePreviews
@@ -63,6 +76,30 @@ public class SettingsViewModel : ObservableObject
                 (config, currentValue) => config.StartMinimized = currentValue
             );
     }
+
+    public bool AutoStartInBackground
+    {
+        get => _autoStartInBackground;
+        set
+        {
+            if (_isUpdatingAutoStart || _autoStartInBackground == value)
+                return;
+
+            _ = SetAutoStartInBackgroundAsync(value);
+        }
+    }
+
+    public string AutoStartError
+    {
+        get => _autoStartError;
+        private set
+        {
+            if (SetProperty(ref _autoStartError, value ?? string.Empty))
+                OnPropertyChanged(nameof(HasAutoStartError));
+        }
+    }
+
+    public bool HasAutoStartError => !string.IsNullOrWhiteSpace(AutoStartError);
 
     public bool ResizeWindows
     {
@@ -177,6 +214,33 @@ public class SettingsViewModel : ObservableObject
                 _applyAction();
                 OnPropertyChanged();
             }
+        }
+    }
+
+    private async Task SetAutoStartInBackgroundAsync(bool value)
+    {
+        bool previous = _autoStartInBackground;
+        _isUpdatingAutoStart = true;
+        _autoStartInBackground = value;
+        OnPropertyChanged(nameof(AutoStartInBackground));
+        AutoStartError = string.Empty;
+
+        try
+        {
+            // Stay on the UI synchronization context so bindable properties update safely.
+            await _autoStartService.SetEnabledAsync(value);
+            _settingsRepository.Update(config => config.AutoStartInBackground = value);
+        }
+        catch (Exception exception)
+        {
+            Logger.Warning(exception, "Auto-start preference could not be applied");
+            _autoStartInBackground = previous;
+            OnPropertyChanged(nameof(AutoStartInBackground));
+            AutoStartError = "Could not update auto-start. Check permissions and try again.";
+        }
+        finally
+        {
+            _isUpdatingAutoStart = false;
         }
     }
 

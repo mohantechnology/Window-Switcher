@@ -524,6 +524,28 @@ public sealed class ConfigFileAccessorTests
     }
 
     [Fact]
+    public void UpdateConfig_PersistsAutoStartInBackground()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            var sut = CreateAccessor(dataFolder);
+
+            Assert.True(sut.Config.AutoStartInBackground);
+
+            sut.UpdateConfig(config => config.AutoStartInBackground = false);
+
+            string json = File.ReadAllText(sut.GetFilePath());
+            Assert.Contains("\"AutoStartInBackground\": false", json, StringComparison.Ordinal);
+            Assert.False(sut.ReadConfig(config => config.AutoStartInBackground));
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
     public void UpdateConfig_PersistsUpdatedValuesImmediately()
     {
         string dataFolder = CreateTempDataFolder();

@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Serilog;
+using WindowSwitcher.Hosting;
 using WindowSwitcher.Lib.Data;
 
 namespace WindowSwitcher.Windows.Services;
@@ -24,6 +25,9 @@ internal sealed class StartupUpdateNotificationService
 
     public async Task NotifyUpdateAvailabilityOnStartupAsync(CancellationToken cancellationToken)
     {
+        if (StartupArguments.StartInBackground)
+            return;
+
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
