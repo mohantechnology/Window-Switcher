@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
+using Serilog;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.Accessors.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Abstractions;
 using WindowSwitcher.Windows.Abstractions;
@@ -11,6 +12,7 @@ namespace WindowSwitcher.Windows.Services;
 
 internal sealed class FloatingWindowRegistry
 {
+    private static readonly ILogger Logger = Log.ForContext<FloatingWindowRegistry>();
     private readonly WinAccessorBase _winAccessorBase;
     private readonly IPreviewFrameProvider _previewFrameProvider;
     private readonly IFloatingWindowHost _floatingWindowHost;
@@ -112,13 +114,24 @@ internal sealed class FloatingWindowRegistry
         if (_windows.ContainsKey(window.WindowId))
             return;
 
-        _windows[window.WindowId] = new FloatingWindow(
-            window,
-            _winAccessorBase,
-            _previewFrameProvider,
-            _floatingWindowHost,
-            _floatingWindowSettingsService
-        );
+        try
+        {
+            _windows[window.WindowId] = new FloatingWindow(
+                window,
+                _winAccessorBase,
+                _previewFrameProvider,
+                _floatingWindowHost,
+                _floatingWindowSettingsService
+            );
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(
+                exception,
+                "Creating floating preview for window {WindowId} failed",
+                window.WindowId
+            );
+        }
     }
 
     private void Remove(string windowId)

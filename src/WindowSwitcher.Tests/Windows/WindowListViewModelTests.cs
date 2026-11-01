@@ -87,7 +87,7 @@ public sealed class WindowListViewModelTests
     }
 
     [Fact]
-    public async Task TryPinWindow_ReturnsFalseWhenPreviewAlreadyExists()
+    public async Task TryPinWindow_ReturnsTrueWhenPreviewAlreadyExists()
     {
         var snapshotProvider = new FakeWindowSnapshotProvider([
             new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
@@ -95,8 +95,8 @@ public sealed class WindowListViewModelTests
         using var sut = CreateViewModel(snapshotProvider);
         await sut.FetchWindowsWithFiltersAsync();
 
-        Assert.False(sut.TryPinWindow("1"));
-        Assert.DoesNotContain("1", sut.PinnedWindowIds);
+        Assert.True(sut.TryPinWindow("1"));
+        Assert.Contains("1", sut.PinnedWindowIds);
     }
 
     [Fact]
@@ -155,6 +155,27 @@ public sealed class WindowListViewModelTests
 
         Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
         Assert.DoesNotContain("1", sut.ClosedFloatingPreviewIds);
+    }
+
+    [Fact]
+    public async Task ClearClosedFloatingPreviews_AllowsWhitelistMatchAgain()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Single(sut.WindowsConfigs);
+
+        Assert.True(sut.TryCloseFloatingPreview("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Empty(sut.WindowsConfigs);
+
+        sut.ClearClosedFloatingPreviews();
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
+        Assert.Empty(sut.ClosedFloatingPreviewIds);
     }
 
     [Fact]

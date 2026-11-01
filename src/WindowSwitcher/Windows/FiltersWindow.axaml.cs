@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Avalonia.Controls;
 using WindowSwitcher.Lib.Data;
@@ -9,17 +10,26 @@ namespace WindowSwitcher.Windows;
 public partial class FiltersWindow : Window
 {
     private readonly UtilityWindowService _windowService = new();
+    private readonly Action? _onWhitelistChanged;
     private FiltersViewModel ViewModel { get; }
 
-    public FiltersWindow(List<string> whitelistPrefixes, List<string> blacklistPrefixes)
+    public FiltersWindow(
+        List<string> whitelistPrefixes,
+        List<string> blacklistPrefixes,
+        Action? onWhitelistChanged = null
+    )
     {
         InitializeComponent();
 
+        _onWhitelistChanged = onWhitelistChanged;
+        var whitelistViewModel = new PrefixListViewModel(
+            new PrefixListService(whitelistPrefixes, StaticData.PrefixWindowType.whitelist),
+            new AvaloniaViewModelDispatcher()
+        );
+        whitelistViewModel.PrefixesChanged += OnWhitelistPrefixesChanged;
+
         ViewModel = new FiltersViewModel(
-            new PrefixListViewModel(
-                new PrefixListService(whitelistPrefixes, StaticData.PrefixWindowType.whitelist),
-                new AvaloniaViewModelDispatcher()
-            ),
+            whitelistViewModel,
             new PrefixListViewModel(
                 new PrefixListService(blacklistPrefixes, StaticData.PrefixWindowType.blacklist),
                 new AvaloniaViewModelDispatcher()
@@ -28,6 +38,11 @@ public partial class FiltersWindow : Window
         DataContext = ViewModel;
 
         Closing += OnClosing;
+    }
+
+    private void OnWhitelistPrefixesChanged(object? sender, EventArgs e)
+    {
+        _onWhitelistChanged?.Invoke();
     }
 
     public void ShowPrefixesTab()

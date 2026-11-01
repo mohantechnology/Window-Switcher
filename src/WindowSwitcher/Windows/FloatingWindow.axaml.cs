@@ -177,7 +177,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             );
         }
 
-        ApplySettingsCore(refreshPreviewPipeline: false);
+        // Service is constructed after this method; skip service opacity sync until then.
+        ApplySettingsCore(refreshPreviewPipeline: false, syncServiceOpacity: false);
     }
 
     private void CanvasPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -448,7 +449,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         _floatingWindowSettingsService.Save(WindowConfig);
     }
 
-    private void ApplyPreviewOpacity()
+    private void ApplyPreviewOpacity(bool syncServiceOpacity = true)
     {
         double opacity = Math.Clamp(
             WindowConfig.PreviewOpacity,
@@ -458,7 +459,10 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         WindowConfig.PreviewOpacity = opacity;
         WindowScreenshot.Opacity = opacity;
         DmaBufPreview.Opacity = opacity;
-        _service.SetPreviewOpacity(opacity);
+        // Constructor applies settings before FloatingWindowService exists; Start() registers
+        // the native thumbnail with WindowConfig.PreviewOpacity.
+        if (syncServiceOpacity)
+            _service.SetPreviewOpacity(opacity);
     }
 
     private void CanvasPointerMoved(object? sender, PointerEventArgs e)
@@ -533,7 +537,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         Close();
     }
 
-    private void ApplySettingsCore(bool refreshPreviewPipeline)
+    private void ApplySettingsCore(bool refreshPreviewPipeline, bool syncServiceOpacity = true)
     {
         FloatingWindowAppearanceSettings configSnapshot =
             _floatingWindowSettingsService.GetAppearanceSettings();
@@ -557,7 +561,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         if (Color.TryParse(configSnapshot.PreviewHighlightColor, out Color highlightColor))
             WindowLabel.Foreground = new SolidColorBrush(highlightColor);
 
-        ApplyPreviewOpacity();
+        ApplyPreviewOpacity(syncServiceOpacity);
         ApplyPreviewBorderAppearance();
 
         if (refreshPreviewPipeline)

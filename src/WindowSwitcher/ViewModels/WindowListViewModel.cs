@@ -173,11 +173,29 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         bool alreadyListed = WindowsConfigs.Any(window =>
             string.Equals(window.WindowId, windowId, StringComparison.Ordinal)
         );
-        if (alreadyListed || !PinnedWindowIds.Add(windowId))
+        if (alreadyListed)
+        {
+            PinnedWindowIds.Add(windowId);
+            return true;
+        }
+
+        if (!PinnedWindowIds.Add(windowId))
             return false;
 
         _ = FetchWindowsWithFiltersAsync();
         return true;
+    }
+
+    /// <summary>
+    /// Clears session close-suppressions so whitelist/prefix matching can show previews again.
+    /// </summary>
+    public void ClearClosedFloatingPreviews()
+    {
+        if (ClosedFloatingPreviewIds.Count == 0)
+            return;
+
+        ClosedFloatingPreviewIds.Clear();
+        _ = FetchWindowsWithFiltersAsync();
     }
 
     /// <summary>
@@ -224,11 +242,13 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         {
             fetchedIds.Add(fetchedWindow.WindowId);
 
+            bool isPinned = PinnedWindowIds.Contains(fetchedWindow.WindowId);
+            bool isClosedSuppressed =
+                !isPinned && ClosedFloatingPreviewIds.Contains(fetchedWindow.WindowId);
             bool isOnBlacklist =
                 filterSettings.BlacklistPrefixes.Contains(fetchedWindow.WindowTitle)
                 || TempWindowIdsBlacklist.Contains(fetchedWindow.WindowId)
-                || ClosedFloatingPreviewIds.Contains(fetchedWindow.WindowId);
-            bool isPinned = PinnedWindowIds.Contains(fetchedWindow.WindowId);
+                || isClosedSuppressed;
             bool isOnWhiteList =
                 isPinned
                 || filterSettings.WhitelistPrefixes.Any(prefix =>

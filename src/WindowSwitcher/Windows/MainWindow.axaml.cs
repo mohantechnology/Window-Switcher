@@ -77,7 +77,8 @@ public partial class MainWindow : Window, IFloatingWindowHost
         );
         FiltersWindow = new FiltersWindow(
             _configurationService.GetWhitelistPrefixes().ToList(),
-            _configurationService.GetBlacklistPrefixes().ToList()
+            _configurationService.GetBlacklistPrefixes().ToList(),
+            onWhitelistChanged: () => ViewModel.ClearClosedFloatingPreviews()
         );
         SettingsWindow = new SettingsWindow(ApplySettings);
         KeybindsWindow = new KeybindsWindow(() => ViewModel.WindowsConfigs.ToArray());
