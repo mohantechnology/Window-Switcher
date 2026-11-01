@@ -1,5 +1,6 @@
 using Newtonsoft.Json;
 using Serilog;
+using WindowSwitcher.Lib.Data.Platform;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Models;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Utilities;
 using WindowSwitcher.Lib.Models;
@@ -541,6 +542,14 @@ public class ConfigFileAccessor
                 WindowConfig clone = windowConfig!.Clone();
                 if (string.IsNullOrWhiteSpace(clone.ConfigKey))
                     clone.ConfigKey = CreateConfigKey(clone);
+                if (
+                    clone.PreviewOpacity < FloatingPreviewHoverAdjustment.MinOpacity
+                    || clone.PreviewOpacity > FloatingPreviewHoverAdjustment.MaxOpacity
+                )
+                {
+                    clone.PreviewOpacity = 0.8;
+                }
+
                 return clone;
             })
             .Cast<WindowConfig?>()
@@ -551,6 +560,20 @@ public class ConfigFileAccessor
             .Targets.Select(KeybindCatalogBuilder.CloneTarget)
             .ToList();
         EnsureDefaultPinFocusedWindowShortcut(config);
+        EnsureDefaultHoverMouseWheelShortcut(
+            config,
+            KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId,
+            KeybindBuiltInTargets.ChangeFloatingSizeOnHoverDisplayName,
+            ctrl: true,
+            shift: false
+        );
+        EnsureDefaultHoverMouseWheelShortcut(
+            config,
+            KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId,
+            KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverDisplayName,
+            ctrl: false,
+            shift: true
+        );
 
         config.ScreenCastRestoreTokens = (config.ScreenCastRestoreTokens ?? [])
             .Where(entry =>
@@ -600,6 +623,50 @@ public class ConfigFileAccessor
         );
     }
 
+    private static void EnsureDefaultHoverMouseWheelShortcut(
+        ConfigFile config,
+        string targetId,
+        string displayLabel,
+        bool ctrl,
+        bool shift
+    )
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayLabel);
+
+        WindowKeybindTargetConfig? existingTarget = config.WindowKeybindTargets.FirstOrDefault(
+            target => string.Equals(target.TargetId, targetId, StringComparison.Ordinal)
+        );
+        if (existingTarget is not null)
+        {
+            if (string.IsNullOrWhiteSpace(existingTarget.DisplayLabel))
+                existingTarget.DisplayLabel = displayLabel;
+            return;
+        }
+
+        var shortcuts = new List<WindowKeybindShortcut>();
+        var defaultCombination = new KeyCombination
+        {
+            Meta = true,
+            Ctrl = ctrl,
+            Shift = shift,
+            Key = KeybindPrimaryKey.MouseWheel,
+        };
+        KeybindCatalog catalog = KeybindCatalogBuilder.Build(config.WindowKeybindTargets);
+        if (!catalog.TryResolveTarget(defaultCombination, out _))
+            shortcuts.Add(new WindowKeybindShortcut { Combination = defaultCombination });
+
+        config.WindowKeybindTargets.Add(
+            new WindowKeybindTargetConfig
+            {
+                TargetId = targetId,
+                DisplayLabel = displayLabel,
+                Shortcuts = shortcuts,
+            }
+        );
+    }
+
     private static ConfigFile CloneConfig(ConfigFile config)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -614,6 +681,8 @@ public class ConfigFileAccessor
             TelemetryInstallationId = config.TelemetryInstallationId,
             UseFixedWindowSize = config.UseFixedWindowSize,
             FocusOnHover = config.FocusOnHover,
+            ChangeSizeOnHover = config.ChangeSizeOnHover,
+            ChangeOpacityOnHover = config.ChangeOpacityOnHover,
             WindowWidth = config.WindowWidth,
             WindowHeight = config.WindowHeight,
             PreviewHighlightColor = config.PreviewHighlightColor,

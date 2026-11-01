@@ -41,8 +41,32 @@ public sealed class ConfigFileAccessorTests
                 KeyCombinationParser.ToCanonicalString(pinShortcut.Combination)
             );
             Assert.True(sut.Config.EnablePinFocusedWindow);
+            Assert.True(sut.Config.ChangeSizeOnHover);
+            Assert.True(sut.Config.ChangeOpacityOnHover);
             Assert.Equal(new ConfigFile().SentryDsn, sut.Config.SentryDsn);
             Assert.True(Guid.TryParse(sut.Config.TelemetryInstallationId, out _));
+
+            WindowKeybindTargetConfig sizeTarget = Assert.Single(
+                sut.Config.WindowKeybindTargets,
+                target =>
+                    target.TargetId == KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId
+            );
+            WindowKeybindShortcut sizeShortcut = Assert.Single(sizeTarget.Shortcuts);
+            Assert.True(sizeShortcut.Combination.Meta);
+            Assert.True(sizeShortcut.Combination.Ctrl);
+            Assert.False(sizeShortcut.Combination.Shift);
+            Assert.Equal(KeybindPrimaryKey.MouseWheel, sizeShortcut.Combination.Key);
+
+            WindowKeybindTargetConfig opacityTarget = Assert.Single(
+                sut.Config.WindowKeybindTargets,
+                target =>
+                    target.TargetId == KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId
+            );
+            WindowKeybindShortcut opacityShortcut = Assert.Single(opacityTarget.Shortcuts);
+            Assert.True(opacityShortcut.Combination.Meta);
+            Assert.True(opacityShortcut.Combination.Shift);
+            Assert.False(opacityShortcut.Combination.Ctrl);
+            Assert.Equal(KeybindPrimaryKey.MouseWheel, opacityShortcut.Combination.Key);
         }
         finally
         {

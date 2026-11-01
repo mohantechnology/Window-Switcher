@@ -82,6 +82,9 @@ public static class User32Functions
     internal static extern int GetWindowTextLength(IntPtr windowHandle);
 
     [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
 
     [DllImport("user32.dll")]

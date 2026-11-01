@@ -62,6 +62,23 @@ internal static class AvaloniaKeybindCaptureMapper
         return true;
     }
 
+    public static KeybindCaptureResult CreateFromMouseWheel(
+        KeyModifiers modifiers,
+        bool metaPressed = false
+    )
+    {
+        return KeybindCaptureResult.Success(
+            new KeyCombination
+            {
+                Ctrl = modifiers.HasFlag(KeyModifiers.Control),
+                Alt = modifiers.HasFlag(KeyModifiers.Alt),
+                Shift = modifiers.HasFlag(KeyModifiers.Shift),
+                Meta = modifiers.HasFlag(KeyModifiers.Meta) || metaPressed,
+                Key = KeybindPrimaryKey.MouseWheel,
+            }
+        );
+    }
+
     private static bool IsModifierOnlyKey(Key key)
     {
         return key

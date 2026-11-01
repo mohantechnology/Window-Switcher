@@ -34,6 +34,8 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
 
     public HashSet<string> PinnedWindowIds { get; } = new(StringComparer.Ordinal);
 
+    public HashSet<string> ClosedFloatingPreviewIds { get; } = new(StringComparer.Ordinal);
+
     public WindowListViewModel(
         IWindowSnapshotProvider windowSnapshotProvider,
         IWindowFilterSettingsProvider windowFilterSettingsProvider,
@@ -166,6 +168,8 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         if (string.IsNullOrWhiteSpace(windowId))
             return false;
 
+        ClosedFloatingPreviewIds.Remove(windowId);
+
         bool alreadyListed = WindowsConfigs.Any(window =>
             string.Equals(window.WindowId, windowId, StringComparison.Ordinal)
         );
@@ -173,6 +177,35 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
             return false;
 
         _ = FetchWindowsWithFiltersAsync();
+        return true;
+    }
+
+    /// <summary>
+    /// Closes one floating preview for this session without changing the main window.
+    /// </summary>
+    public bool TryCloseFloatingPreview(string windowId)
+    {
+        if (string.IsNullOrWhiteSpace(windowId))
+            return false;
+
+        PinnedWindowIds.Remove(windowId);
+        ClosedFloatingPreviewIds.Add(windowId);
+
+        WindowConfig? existing = WindowsConfigs.FirstOrDefault(window =>
+            string.Equals(window.WindowId, windowId, StringComparison.Ordinal)
+        );
+        if (existing is null)
+            return false;
+
+        WindowsConfigs.Remove(existing);
+        if (
+            SelectedWindow is not null
+            && string.Equals(SelectedWindow.WindowId, windowId, StringComparison.Ordinal)
+        )
+        {
+            SelectedWindow = null;
+        }
+
         return true;
     }
 
@@ -193,7 +226,8 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
 
             bool isOnBlacklist =
                 filterSettings.BlacklistPrefixes.Contains(fetchedWindow.WindowTitle)
-                || TempWindowIdsBlacklist.Contains(fetchedWindow.WindowId);
+                || TempWindowIdsBlacklist.Contains(fetchedWindow.WindowId)
+                || ClosedFloatingPreviewIds.Contains(fetchedWindow.WindowId);
             bool isPinned = PinnedWindowIds.Contains(fetchedWindow.WindowId);
             bool isOnWhiteList =
                 isPinned
@@ -232,10 +266,12 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
                 continue;
 
             PinnedWindowIds.Remove(window.WindowId);
+            ClosedFloatingPreviewIds.Remove(window.WindowId);
             WindowsConfigs.RemoveAt(i);
         }
 
         PinnedWindowIds.RemoveWhere(pinnedWindowId => !fetchedIds.Contains(pinnedWindowId));
+        ClosedFloatingPreviewIds.RemoveWhere(closedWindowId => !fetchedIds.Contains(closedWindowId));
 
         if (SelectedWindow is null)
             return;

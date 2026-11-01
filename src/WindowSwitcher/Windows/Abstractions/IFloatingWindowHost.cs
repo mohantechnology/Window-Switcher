@@ -7,6 +7,7 @@ public interface IFloatingWindowHost
     bool CanResetPreviewSelection { get; }
     void AddToBlacklist(string windowTitle);
     void AddToTempBlacklist(string windowId);
+    void CloseFloatingPreview(string windowId);
     void ResetPreviewSelection(string windowId);
     void SetActivePreview(IFloatingPreviewWindow floatingWindow);
     void ClearActivePreview(IFloatingPreviewWindow floatingWindow);

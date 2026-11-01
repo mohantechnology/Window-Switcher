@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using WindowSwitcher.Hosting;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Abstractions;
+using WindowSwitcher.Lib.Data.Platform.SystemInfo.Abstractions;
 using WindowSwitcher.Lib.Models;
 using WindowSwitcher.ViewModels;
 using WindowSwitcher.ViewModels.Abstractions;
@@ -16,6 +17,7 @@ public partial class KeybindsWindow : Window
 {
     private readonly UtilityWindowService _windowService = new();
     private readonly KeybindSettingsViewModel _viewModel;
+    private readonly IMetaKeyStateReader _metaKeyStateReader;
 
     public KeybindsWindow()
         : this(() => Array.Empty<WindowConfig>()) { }
@@ -32,6 +34,7 @@ public partial class KeybindsWindow : Window
             AppServiceProvider.GetRequiredService<IWindowKeybindTargetCatalogService>();
         IGlobalKeyboardStartupStatusService globalKeyboardStartupStatusService =
             AppServiceProvider.GetRequiredService<IGlobalKeyboardStartupStatusService>();
+        _metaKeyStateReader = AppServiceProvider.GetRequiredService<IMetaKeyStateReader>();
 
         _viewModel = new KeybindSettingsViewModel(
             keybindManager,
@@ -58,6 +61,20 @@ public partial class KeybindsWindow : Window
             e.PhysicalKey,
             e.KeySymbol,
             e.KeyModifiers
+        );
+        bool handled = _viewModel.TryCaptureKey(captureResult);
+        if (handled)
+            e.Handled = true;
+    }
+
+    private void WindowPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        if (Math.Abs(e.Delta.Y) < double.Epsilon)
+            return;
+
+        KeybindCaptureResult captureResult = AvaloniaKeybindCaptureMapper.CreateFromMouseWheel(
+            e.KeyModifiers,
+            _metaKeyStateReader.IsMetaPressed()
         );
         bool handled = _viewModel.TryCaptureKey(captureResult);
         if (handled)

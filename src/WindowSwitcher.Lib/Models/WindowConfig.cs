@@ -84,6 +84,18 @@ public class WindowConfig : INotifyPropertyChanged
         }
     } = 100;
 
+    public double PreviewOpacity
+    {
+        get;
+        set
+        {
+            if (field == value)
+                return;
+            field = value;
+            OnPropertyChanged();
+        }
+    } = 0.8;
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)

@@ -39,6 +39,7 @@ public static class PlatformServiceCollectionExtensions
             services.AddSingleton<ICommandRunner, WindowsCommandRunner>();
             services.AddSingleton<IFloatingPreviewPolicy, WindowsFloatingPreviewPolicy>();
             services.AddSingleton<INativeThumbnailRenderer, WindowsDwmNativeThumbnailRenderer>();
+            services.AddSingleton<IMetaKeyStateReader, WindowsMetaKeyStateReader>();
             services.AddSingleton<
                 IFloatingWindowHandleConfigurator,
                 WindowsFloatingWindowHandleConfigurator
@@ -51,6 +52,7 @@ public static class PlatformServiceCollectionExtensions
             services.AddSingleton<ICommandRunner, LinuxCommandRunner>();
             services.AddSingleton<IFloatingPreviewPolicy, LinuxFloatingPreviewPolicy>();
             services.AddSingleton<INativeThumbnailRenderer, NoOpNativeThumbnailRenderer>();
+            services.AddSingleton<IMetaKeyStateReader, AvaloniaFallbackMetaKeyStateReader>();
             services.AddSingleton<
                 IFloatingWindowHandleConfigurator,
                 NoOpFloatingWindowHandleConfigurator

@@ -26,6 +26,10 @@
                                   IsChecked="{Binding MoveWindows, Mode=TwoWay}" />
                         <CheckBox Content="Focus on hover"
                                   IsChecked="{Binding FocusOnHover, Mode=TwoWay}" />
+                        <CheckBox Content="Change size on hover"
+                                  IsChecked="{Binding ChangeSizeOnHover, Mode=TwoWay}" />
+                        <CheckBox Content="Change opacity on hover"
+                                  IsChecked="{Binding ChangeOpacityOnHover, Mode=TwoWay}" />
                         <CheckBox Content="Enable previews"
                                   IsChecked="{Binding EnablePreviews, Mode=TwoWay}" />
                         <CheckBox Content="Enable pin focused window"

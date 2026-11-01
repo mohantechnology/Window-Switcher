@@ -31,10 +31,21 @@ public sealed class PlatformPoliciesTests
             destinationWindowHandle: 1,
             sourceWindowHandle: 2,
             destinationBounds: new NativeThumbnailBounds(0, 0, 100, 100),
+            opacity: 204,
             out nint thumbnailHandle
         );
 
         Assert.False(registered);
         Assert.Equal(0, thumbnailHandle);
+        Assert.False(renderer.TryUpdateOpacity(thumbnailHandle: 1, opacity: 128));
+    }
+
+    [Theory]
+    [InlineData(0.8, 204)]
+    [InlineData(1.0, 255)]
+    [InlineData(0.2, 51)]
+    public void ToByteOpacity_MapsNormalizedOpacity(double opacity, byte expected)
+    {
+        Assert.Equal(expected, WindowSwitcher.Lib.Data.Platform.FloatingPreviewHoverAdjustment.ToByteOpacity(opacity));
     }
 }

@@ -118,6 +118,46 @@ public sealed class WindowListViewModelTests
     }
 
     [Fact]
+    public async Task TryCloseFloatingPreview_RemovesPreviewAndSuppressesReopen()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
+            new WindowConfig { WindowId = "2", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.True(sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
+
+        Assert.True(sut.TryCloseFloatingPreview("1"));
+        Assert.DoesNotContain(sut.WindowsConfigs, window => window.WindowId == "1");
+        Assert.DoesNotContain("1", sut.PinnedWindowIds);
+        Assert.Contains("1", sut.ClosedFloatingPreviewIds);
+
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.DoesNotContain(sut.WindowsConfigs, window => window.WindowId == "1");
+    }
+
+    [Fact]
+    public async Task TryPinWindow_ClearsClosedPreviewSuppression()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        Assert.True(sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.True(sut.TryCloseFloatingPreview("1"));
+
+        Assert.True(sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
+        Assert.DoesNotContain("1", sut.ClosedFloatingPreviewIds);
+    }
+
+    [Fact]
     public void PauseRefresh_MarksRefreshAsPaused_UntilResume()
     {
         var snapshotProvider = new FakeWindowSnapshotProvider([

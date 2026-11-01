@@ -16,6 +16,7 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
         nint destinationWindowHandle,
         nint sourceWindowHandle,
         NativeThumbnailBounds destinationBounds,
+        byte opacity,
         out nint thumbnailHandle
     )
     {
@@ -40,7 +41,7 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
                 | DwmFunctions.DWM_TNP_RECTDESTINATION,
             fSourceClientAreaOnly = false,
             fVisible = true,
-            opacity = 255,
+            opacity = opacity,
             rcDestination = new DwmFunctions.Rect
             {
                 Left = destinationBounds.Left,
@@ -53,6 +54,21 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
         DwmFunctions.DwmUpdateThumbnailProperties(registeredThumbnailHandle, ref properties);
         thumbnailHandle = registeredThumbnailHandle;
         return true;
+    }
+
+    /// <inheritdoc />
+    public bool TryUpdateOpacity(nint thumbnailHandle, byte opacity)
+    {
+        if (thumbnailHandle == 0)
+            return false;
+
+        var properties = new DwmFunctions.DWM_THUMBNAIL_PROPERTIES
+        {
+            dwFlags = DwmFunctions.DWM_TNP_OPACITY,
+            opacity = opacity,
+        };
+
+        return DwmFunctions.DwmUpdateThumbnailProperties(thumbnailHandle, ref properties) == 0;
     }
 
     /// <inheritdoc />

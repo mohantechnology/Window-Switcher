@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Serilog;
 using WindowSwitcher.Controls;
 using WindowSwitcher.Lib.Data;
+using WindowSwitcher.Lib.Data.Platform;
 using WindowSwitcher.Lib.Data.Platform.SystemInfo.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Abstractions;
 using WindowSwitcher.Lib.Models;
@@ -17,7 +18,8 @@ namespace WindowSwitcher.Windows.Services;
 
 internal sealed class FloatingWindowService
 {
-    private const double TitleReservedHeight = 12;
+    // Leave room for the hover close button chrome above the native DWM thumbnail.
+    private const double TitleReservedHeight = 26;
     private const double PreviewBorderThickness = 2;
     private const int PreviewRequestTimeoutMs = 1_500;
     private const int ResizePreviewRefreshDebounceMs = 250;
@@ -100,6 +102,23 @@ internal sealed class FloatingWindowService
     public void OnPointerReleased() => FlushPendingResizePreviewRefresh();
 
     public void SetPreviewHighlight(bool isSelected) => _previewBorder.IsVisible = isSelected;
+
+    public void SetPreviewOpacity(double opacity)
+    {
+        if (_isClosing)
+            return;
+
+        byte byteOpacity = FloatingPreviewHoverAdjustment.ToByteOpacity(opacity);
+        if (_floatingPreviewPolicy.UseNativeThumbnailPreview)
+        {
+            if (_thumbnailHandle != 0)
+                _nativeThumbnailRenderer.TryUpdateOpacity(_thumbnailHandle, byteOpacity);
+            return;
+        }
+
+        _windowScreenshot.Opacity = opacity;
+        _dmaBufPreview.Opacity = opacity;
+    }
 
     public void UpdateLayout()
     {
@@ -613,11 +632,13 @@ internal sealed class FloatingWindowService
             (int)(_windowConfig.WindowWidth * scale) - inset,
             (int)(_windowConfig.WindowHeight * scale) - inset
         );
+        byte opacity = FloatingPreviewHoverAdjustment.ToByteOpacity(_windowConfig.PreviewOpacity);
         if (
             _nativeThumbnailRenderer.TryRegister(
                 platformHandle.Handle,
                 new IntPtr(sourceHandle),
                 bounds,
+                opacity,
                 out nint handle
             )
         )

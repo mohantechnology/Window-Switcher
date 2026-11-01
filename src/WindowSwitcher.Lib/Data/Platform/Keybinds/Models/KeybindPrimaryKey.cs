@@ -124,4 +124,9 @@ public enum KeybindPrimaryKey
     Period = 509,
     Slash = 510,
     IntlBackslash = 511,
+
+    /// <summary>
+    /// Mouse wheel used as the primary input for hover-gated floating window shortcuts.
+    /// </summary>
+    MouseWheel = 600,
 }

@@ -21,6 +21,8 @@ public sealed class KeyCombinationParserTests
     [InlineData("Ctrl+Return", "Ctrl+Enter")]
     [InlineData("Ctrl+PageDown", "Ctrl+PageDown")]
     [InlineData("Ctrl+Keypad1", "Ctrl+NumPad1")]
+    [InlineData("Win+Ctrl+MouseWheel", "Ctrl+Meta+MouseWheel")]
+    [InlineData("Meta+Shift+Wheel", "Shift+Meta+MouseWheel")]
     public void TryParse_ReturnsCanonicalDisplay(string text, string expectedCanonical)
     {
         bool parsed = KeyCombinationParser.TryParse(text, out KeyCombination combination);
@@ -41,6 +43,8 @@ public sealed class KeyCombinationParserTests
     [InlineData("OEM5", KeybindPrimaryKey.Backslash)]
     [InlineData("KeypadSlash", KeybindPrimaryKey.NumPadDivide)]
     [InlineData("IntlBackslash", KeybindPrimaryKey.IntlBackslash)]
+    [InlineData("MouseWheel", KeybindPrimaryKey.MouseWheel)]
+    [InlineData("ScrollWheel", KeybindPrimaryKey.MouseWheel)]
     public void TryParsePrimaryToken_ParsesAliases(string token, KeybindPrimaryKey expectedKey)
     {
         bool parsed = KeyCombinationParser.TryParsePrimaryToken(token, out KeybindPrimaryKey key);

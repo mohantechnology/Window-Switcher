@@ -293,6 +293,14 @@ public partial class MainWindow : Window, IFloatingWindowHost
         _blacklistCoordinator.AddToTemporaryBlacklist(windowId);
     }
 
+    public void CloseFloatingPreview(string windowId)
+    {
+        if (string.IsNullOrWhiteSpace(windowId))
+            return;
+
+        _ = ViewModel.TryCloseFloatingPreview(windowId);
+    }
+
     public bool CanResetPreviewSelection => _previewSelectionReset is not null;
 
     public void ResetPreviewSelection(string windowId)

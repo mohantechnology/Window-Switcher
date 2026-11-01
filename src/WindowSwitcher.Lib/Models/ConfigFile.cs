@@ -15,6 +15,8 @@ public class ConfigFile
 
     public bool UseFixedWindowSize { get; set; } = false;
     public bool FocusOnHover { get; set; } = false;
+    public bool ChangeSizeOnHover { get; set; } = true;
+    public bool ChangeOpacityOnHover { get; set; } = true;
     public int WindowWidth { get; set; } = 300;
     public int WindowHeight { get; set; } = 200;
     public string PreviewHighlightColor { get; set; } = "#E3008C";

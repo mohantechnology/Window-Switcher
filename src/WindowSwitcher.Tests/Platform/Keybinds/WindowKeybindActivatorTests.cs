@@ -157,6 +157,27 @@ public sealed class WindowKeybindActivatorTests
         );
     }
 
+    [Theory]
+    [InlineData(KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId)]
+    [InlineData(KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId)]
+    public async Task TryActivateTarget_HoverLocalActions_ReturnFalseWithoutSideEffects(
+        string targetId
+    )
+    {
+        WindowConfig editor = CreateWindow("w-1", "Editor", "code");
+        var accessor = new FakeWinAccessor(editor) { ForegroundWindowId = "w-1" };
+        var sut = new WindowKeybindActivator(accessor, SelectAll, () => true);
+        string? activatedWindowId = null;
+        string? pinnedWindowId = null;
+        sut.WindowActivated += (_, windowId) => activatedWindowId = windowId;
+        sut.WindowPinRequested += (_, windowId) => pinnedWindowId = windowId;
+
+        Assert.False(await sut.TryActivateTargetAsync(targetId));
+        Assert.Null(activatedWindowId);
+        Assert.Null(pinnedWindowId);
+        Assert.Empty(accessor.RaisedWindowIds);
+    }
+
     [Fact]
     public async Task TryActivateTarget_BuiltInAction_RaisesWindowActivatedEvent()
     {

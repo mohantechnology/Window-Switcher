@@ -95,6 +95,10 @@ public sealed class WindowKeybindActivator : IWindowKeybindActivator
         )
             return await TryPinFocusedWindowAsync(cancellationToken).ConfigureAwait(false);
 
+        // Hover-local mouse-wheel actions are applied by FloatingWindow, not the global activator.
+        if (KeybindBuiltInTargets.IsHoverLocalTarget(normalizedTargetId))
+            return false;
+
         IReadOnlyCollection<WindowConfig> windows = await _accessor
             .GetWindowsAsync(cancellationToken)
             .ConfigureAwait(false);

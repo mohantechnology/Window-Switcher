@@ -52,6 +52,34 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void ChangeSizeOnHover_DefaultsToTrueAndPersistsChanges()
+    {
+        var repository = new FakeSettingsRepository();
+        var sut = CreateSut(repository);
+
+        Assert.True(sut.ChangeSizeOnHover);
+
+        sut.ChangeSizeOnHover = false;
+
+        Assert.False(repository.Config.ChangeSizeOnHover);
+        Assert.False(sut.ChangeSizeOnHover);
+    }
+
+    [Fact]
+    public void ChangeOpacityOnHover_DefaultsToTrueAndPersistsChanges()
+    {
+        var repository = new FakeSettingsRepository();
+        var sut = CreateSut(repository);
+
+        Assert.True(sut.ChangeOpacityOnHover);
+
+        sut.ChangeOpacityOnHover = false;
+
+        Assert.False(repository.Config.ChangeOpacityOnHover);
+        Assert.False(sut.ChangeOpacityOnHover);
+    }
+
+    [Fact]
     public async Task AutoStartInBackground_PersistsAndAppliesWhenServiceSucceeds()
     {
         var repository = new FakeSettingsRepository();

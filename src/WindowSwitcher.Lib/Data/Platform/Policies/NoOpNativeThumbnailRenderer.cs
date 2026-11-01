@@ -13,12 +13,16 @@ public sealed class NoOpNativeThumbnailRenderer : INativeThumbnailRenderer
         nint destinationWindowHandle,
         nint sourceWindowHandle,
         NativeThumbnailBounds destinationBounds,
+        byte opacity,
         out nint thumbnailHandle
     )
     {
         thumbnailHandle = 0;
         return false;
     }
+
+    /// <inheritdoc />
+    public bool TryUpdateOpacity(nint thumbnailHandle, byte opacity) => false;
 
     /// <inheritdoc />
     public void Unregister(nint thumbnailHandle) { }

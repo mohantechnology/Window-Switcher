@@ -13,14 +13,24 @@ public interface INativeThumbnailRenderer
     /// <param name="destinationWindowHandle">Native handle of the preview host window.</param>
     /// <param name="sourceWindowHandle">Native handle of the window being previewed.</param>
     /// <param name="destinationBounds">Destination rectangle in physical pixels.</param>
+    /// <param name="opacity">Preview opacity from 0 (transparent) to 255 (opaque).</param>
     /// <param name="thumbnailHandle">Native thumbnail handle when registration succeeds.</param>
     /// <returns><see langword="true"/> when the thumbnail was registered.</returns>
     bool TryRegister(
         nint destinationWindowHandle,
         nint sourceWindowHandle,
         NativeThumbnailBounds destinationBounds,
+        byte opacity,
         out nint thumbnailHandle
     );
+
+    /// <summary>
+    /// Updates the opacity of an already registered native thumbnail.
+    /// </summary>
+    /// <param name="thumbnailHandle">Native thumbnail handle returned by <see cref="TryRegister"/>.</param>
+    /// <param name="opacity">Preview opacity from 0 (transparent) to 255 (opaque).</param>
+    /// <returns><see langword="true"/> when the opacity was updated.</returns>
+    bool TryUpdateOpacity(nint thumbnailHandle, byte opacity);
 
     /// <summary>
     /// Releases a previously registered native thumbnail.

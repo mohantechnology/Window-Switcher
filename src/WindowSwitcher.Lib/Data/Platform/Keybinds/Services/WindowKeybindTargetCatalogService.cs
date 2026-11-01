@@ -77,6 +77,17 @@ public sealed class WindowKeybindTargetCatalogService : IWindowKeybindTargetCata
                 KeybindBuiltInTargets.PinFocusedWindowDisplayName,
                 isBuiltIn: true
             ),
+            [KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId] = new KeybindTargetDescriptor(
+                KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId,
+                KeybindBuiltInTargets.ChangeFloatingSizeOnHoverDisplayName,
+                isBuiltIn: true
+            ),
+            [KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId] =
+                new KeybindTargetDescriptor(
+                    KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId,
+                    KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverDisplayName,
+                    isBuiltIn: true
+                ),
         };
 
         foreach (WindowKeybindTargetConfig target in persistedTargets)
@@ -107,7 +118,26 @@ public sealed class WindowKeybindTargetCatalogService : IWindowKeybindTargetCata
             }
         }
 
-        return actionsById.Values.ToArray();
+        // Keep a stable, readable order so new hover actions are not clipped/hidden.
+        string[] orderedIds =
+        [
+            KeybindBuiltInTargets.NextClientTargetId,
+            KeybindBuiltInTargets.PreviousClientTargetId,
+            KeybindBuiltInTargets.FocusActiveClientTargetId,
+            KeybindBuiltInTargets.PinFocusedWindowTargetId,
+            KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId,
+            KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId,
+        ];
+
+        var ordered = new List<KeybindTargetDescriptor>(actionsById.Count);
+        foreach (string targetId in orderedIds)
+        {
+            if (actionsById.Remove(targetId, out KeybindTargetDescriptor? descriptor))
+                ordered.Add(descriptor);
+        }
+
+        ordered.AddRange(actionsById.Values.OrderBy(target => target.DisplayName));
+        return ordered;
     }
 
     private static IReadOnlyList<KeybindTargetDescriptor> BuildClientTargets(

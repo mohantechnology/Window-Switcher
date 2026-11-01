@@ -140,6 +140,30 @@ public class SettingsViewModel : ObservableObject
             );
     }
 
+    public bool ChangeSizeOnHover
+    {
+        get => ReadSetting(config => config.ChangeSizeOnHover);
+        set =>
+            UpdateSetting(
+                nameof(ChangeSizeOnHover),
+                value,
+                config => config.ChangeSizeOnHover,
+                (config, currentValue) => config.ChangeSizeOnHover = currentValue
+            );
+    }
+
+    public bool ChangeOpacityOnHover
+    {
+        get => ReadSetting(config => config.ChangeOpacityOnHover);
+        set =>
+            UpdateSetting(
+                nameof(ChangeOpacityOnHover),
+                value,
+                config => config.ChangeOpacityOnHover,
+                (config, currentValue) => config.ChangeOpacityOnHover = currentValue
+            );
+    }
+
     public bool UseFixedWindowSize
     {
         get => ReadSetting(config => config.UseFixedWindowSize);

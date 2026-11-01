@@ -1,13 +1,20 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Serilog;
 using WindowSwitcher.Controls;
 using WindowSwitcher.Hosting;
 using WindowSwitcher.Lib.Data;
+using WindowSwitcher.Lib.Data.Platform;
+using WindowSwitcher.Lib.Data.Platform.Keybinds.Abstractions;
+using WindowSwitcher.Lib.Data.Platform.Keybinds.Models;
+using WindowSwitcher.Lib.Data.Platform.Keybinds.Utilities;
 using WindowSwitcher.Lib.Data.Platform.SystemInfo.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.Accessors.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Abstractions;
@@ -47,6 +54,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     private readonly WinAccessorBase _winAccessorBase;
     private readonly IFloatingPreviewPolicy _floatingPreviewPolicy;
     private readonly IFloatingWindowSettingsService _floatingWindowSettingsService;
+    private readonly IWindowKeybindManager _windowKeybindManager;
+    private readonly IMetaKeyStateReader _metaKeyStateReader;
     private readonly FloatingWindowService _service;
     public WindowConfig WindowConfig { get; private set; }
 
@@ -73,6 +82,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         _floatingWindowHost = floatingWindowHost;
         _floatingWindowSettingsService = floatingWindowSettingsService;
         _floatingPreviewPolicy = AppServiceProvider.GetRequiredService<IFloatingPreviewPolicy>();
+        _windowKeybindManager = AppServiceProvider.GetRequiredService<IWindowKeybindManager>();
+        _metaKeyStateReader = AppServiceProvider.GetRequiredService<IMetaKeyStateReader>();
         var nativeThumbnailRenderer =
             AppServiceProvider.GetRequiredService<INativeThumbnailRenderer>();
         var floatingWindowHandleConfigurator =
@@ -263,6 +274,16 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         _ = RaiseWindowAndNotifyActivationAsync();
     }
 
+    private void FloatingRootPointerEntered(object? sender, PointerEventArgs e)
+    {
+        ClosePreviewButton.IsVisible = true;
+    }
+
+    private void FloatingRootPointerExited(object? sender, PointerEventArgs e)
+    {
+        ClosePreviewButton.IsVisible = false;
+    }
+
     private void CanvasPointerEntered(object? sender, PointerEventArgs e)
     {
         UpdateResizeCursor(e);
@@ -309,6 +330,135 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     {
         _isPointerInside = false;
         WindowCanvas.Cursor = DefaultCursor;
+    }
+
+    private void ClosePreviewButtonPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        e.Handled = true;
+    }
+
+    private void ClosePreviewButtonClick(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        _floatingWindowHost.CloseFloatingPreview(WindowConfig.WindowId);
+    }
+
+    private void FloatingWindowPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        if (Math.Abs(e.Delta.Y) < double.Epsilon)
+            return;
+
+        bool increase = e.Delta.Y > 0;
+        bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        bool alt = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+        bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        // Win is often missing from Avalonia pointer modifiers on Windows; merge OS state.
+        bool meta =
+            e.KeyModifiers.HasFlag(KeyModifiers.Meta) || _metaKeyStateReader.IsMetaPressed();
+
+        FloatingWindowBehaviorSettings behavior =
+            _floatingWindowSettingsService.GetBehaviorSettings();
+        FloatingWindowAppearanceSettings appearance =
+            _floatingWindowSettingsService.GetAppearanceSettings();
+
+        if (
+            behavior.ChangeSizeOnHover
+            && !appearance.UseFixedWindowSize
+            && MatchesConfiguredMouseWheelShortcut(
+                KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId,
+                ctrl,
+                alt,
+                shift,
+                meta
+            )
+        )
+        {
+            ApplyHoverSizeChange(increase);
+            e.Handled = true;
+            return;
+        }
+
+        if (
+            behavior.ChangeOpacityOnHover
+            && MatchesConfiguredMouseWheelShortcut(
+                KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId,
+                ctrl,
+                alt,
+                shift,
+                meta
+            )
+        )
+        {
+            ApplyHoverOpacityChange(increase);
+            e.Handled = true;
+        }
+    }
+
+    private bool MatchesConfiguredMouseWheelShortcut(
+        string targetId,
+        bool ctrl,
+        bool alt,
+        bool shift,
+        bool meta
+    )
+    {
+        IReadOnlyCollection<WindowKeybindShortcut> shortcuts =
+            _windowKeybindManager.GetShortcutsForTarget(targetId);
+        return shortcuts.Any(shortcut =>
+            FloatingPreviewHoverAdjustment.MatchesMouseWheelShortcut(
+                shortcut.Combination,
+                ctrl,
+                alt,
+                shift,
+                meta
+            )
+        );
+    }
+
+    private void ApplyHoverSizeChange(bool increase)
+    {
+        (int nextWidth, int nextHeight) = FloatingPreviewHoverAdjustment.ScaleSize(
+            (int)Math.Max(1, Width),
+            (int)Math.Max(1, Height),
+            increase
+        );
+
+        if (nextWidth == (int)Width && nextHeight == (int)Height)
+            return;
+
+        Width = nextWidth;
+        Height = nextHeight;
+        WindowConfig.WindowWidth = nextWidth;
+        WindowConfig.WindowHeight = nextHeight;
+        _floatingWindowSettingsService.Save(WindowConfig);
+        _service.OnWindowResized();
+    }
+
+    private void ApplyHoverOpacityChange(bool increase)
+    {
+        double nextOpacity = FloatingPreviewHoverAdjustment.AdjustOpacity(
+            WindowConfig.PreviewOpacity,
+            increase
+        );
+        if (Math.Abs(nextOpacity - WindowConfig.PreviewOpacity) < double.Epsilon)
+            return;
+
+        WindowConfig.PreviewOpacity = nextOpacity;
+        ApplyPreviewOpacity();
+        _floatingWindowSettingsService.Save(WindowConfig);
+    }
+
+    private void ApplyPreviewOpacity()
+    {
+        double opacity = Math.Clamp(
+            WindowConfig.PreviewOpacity,
+            FloatingPreviewHoverAdjustment.MinOpacity,
+            FloatingPreviewHoverAdjustment.MaxOpacity
+        );
+        WindowConfig.PreviewOpacity = opacity;
+        WindowScreenshot.Opacity = opacity;
+        DmaBufPreview.Opacity = opacity;
+        _service.SetPreviewOpacity(opacity);
     }
 
     private void CanvasPointerMoved(object? sender, PointerEventArgs e)
@@ -407,6 +557,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         if (Color.TryParse(configSnapshot.PreviewHighlightColor, out Color highlightColor))
             WindowLabel.Foreground = new SolidColorBrush(highlightColor);
 
+        ApplyPreviewOpacity();
         ApplyPreviewBorderAppearance();
 
         if (refreshPreviewPipeline)
