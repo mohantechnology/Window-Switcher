@@ -80,6 +80,63 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void DefaultPreviewOpacity_DefaultsToFullAndAppliesToOpenWindows()
+    {
+        var repository = new FakeSettingsRepository();
+        double appliedOpacity = 0;
+        var sut = CreateSut(repository, applyDefaultOpacity: opacity => appliedOpacity = opacity);
+
+        Assert.Equal(1.0, sut.DefaultPreviewOpacity);
+
+        sut.DefaultPreviewOpacity = 0.55;
+
+        Assert.Equal(0.55, repository.Config.DefaultPreviewOpacity);
+        Assert.Equal(0.55, appliedOpacity);
+    }
+
+    [Fact]
+    public void DefaultPreviewOpacity_UpdatesPersistedFloatingWindowOpacity()
+    {
+        var repository = new FakeSettingsRepository();
+        repository.Config.FloatingWindowsConfig.Add(
+            new WindowConfig { WindowTitle = "Editor", PreviewOpacity = 0.8 }
+        );
+        var sut = CreateSut(repository);
+
+        sut.DefaultPreviewOpacity = 1.0;
+
+        Assert.Equal(1.0, repository.Config.FloatingWindowsConfig[0]!.PreviewOpacity);
+    }
+
+    [Fact]
+    public void PreviewFrameRate_DefaultsToOneAndPersistsChanges()
+    {
+        var repository = new FakeSettingsRepository();
+        int applyActionInvocationCount = 0;
+        var sut = CreateSut(repository, applyAction: () => applyActionInvocationCount++);
+
+        Assert.Equal(1, sut.PreviewFrameRate);
+
+        sut.PreviewFrameRate = 5;
+
+        Assert.Equal(5, repository.Config.PreviewFrameRate);
+        Assert.Equal(1, applyActionInvocationCount);
+    }
+
+    [Fact]
+    public void PreviewFrameRate_ClampsToSupportedRange()
+    {
+        var repository = new FakeSettingsRepository();
+        var sut = CreateSut(repository);
+
+        sut.PreviewFrameRate = 99;
+        Assert.Equal(30, repository.Config.PreviewFrameRate);
+
+        sut.PreviewFrameRate = -3;
+        Assert.Equal(0, repository.Config.PreviewFrameRate);
+    }
+
+    [Fact]
     public async Task AutoStartInBackground_PersistsAndAppliesWhenServiceSucceeds()
     {
         var repository = new FakeSettingsRepository();
@@ -120,6 +177,7 @@ public sealed class SettingsViewModelTests
         FakeSettingsRepository? repository = null,
         Action<string>? applyColor = null,
         Action? applyAction = null,
+        Action<double>? applyDefaultOpacity = null,
         IAutoStartService? autoStartService = null
     )
     {
@@ -127,7 +185,8 @@ public sealed class SettingsViewModelTests
             repository ?? new FakeSettingsRepository(),
             autoStartService ?? new FakeAutoStartService(),
             applyAction ?? (() => { }),
-            applyColor ?? (_ => { })
+            applyColor ?? (_ => { }),
+            applyDefaultOpacity ?? (_ => { })
         );
     }
 

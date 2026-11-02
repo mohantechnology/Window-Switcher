@@ -47,6 +47,7 @@ internal sealed class X11PreviewFrameProvider : IPreviewFrameProvider
 
         long lastFrameTimestamp = 0;
         bool captureDue = true;
+        bool snapshotOnly = PreviewFrameTiming.FramesPerSecond <= 0;
         while (!cancellationToken.IsCancellationRequested && !_disposed)
         {
             if (!captureDue)
@@ -88,8 +89,24 @@ internal sealed class X11PreviewFrameProvider : IPreviewFrameProvider
 
             // A skipped capture is retried on the next frame interval, even without new damage.
             captureDue = frame is null;
-            if (frame is not null)
-                yield return frame;
+            if (frame is null)
+                continue;
+
+            yield return frame;
+            if (!snapshotOnly)
+                continue;
+
+            try
+            {
+                // Keep the stream open so the consumer does not reconnect and recapture.
+                await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation requested by the consumer: end the stream normally.
+            }
+
+            yield break;
         }
     }
 
@@ -98,8 +115,12 @@ internal sealed class X11PreviewFrameProvider : IPreviewFrameProvider
         CancellationToken cancellationToken
     )
     {
+        TimeSpan? frameInterval = PreviewFrameTiming.TryGetFrameInterval();
+        if (frameInterval is null)
+            return Task.CompletedTask;
+
         TimeSpan elapsed = Stopwatch.GetElapsedTime(lastFrameTimestamp);
-        TimeSpan remaining = PreviewFrameTiming.FrameInterval - elapsed;
+        TimeSpan remaining = frameInterval.Value - elapsed;
         return remaining <= TimeSpan.Zero
             ? Task.CompletedTask
             : Task.Delay(remaining, cancellationToken);

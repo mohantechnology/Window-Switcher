@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Serilog;
+using WindowSwitcher.Lib.Data.Platform;
 using WindowSwitcher.Lib.Data.Platform.Autostart.Abstractions;
 using WindowSwitcher.Lib.Models;
 using WindowSwitcher.ViewModels.Abstractions;
@@ -17,6 +18,7 @@ public class SettingsViewModel : ObservableObject
     private readonly IAutoStartService _autoStartService;
     private readonly Action _applyAction;
     private readonly Action<string> _applyPreviewHighlightColorAction;
+    private readonly Action<double> _applyDefaultPreviewOpacityAction;
     private bool _autoStartInBackground;
     private bool _isUpdatingAutoStart;
     private string _autoStartError = string.Empty;
@@ -25,18 +27,21 @@ public class SettingsViewModel : ObservableObject
         ISettingsRepository settingsRepository,
         IAutoStartService autoStartService,
         Action applyAction,
-        Action<string> applyPreviewHighlightColorAction
+        Action<string> applyPreviewHighlightColorAction,
+        Action<double> applyDefaultPreviewOpacityAction
     )
     {
         ArgumentNullException.ThrowIfNull(settingsRepository);
         ArgumentNullException.ThrowIfNull(autoStartService);
         ArgumentNullException.ThrowIfNull(applyAction);
         ArgumentNullException.ThrowIfNull(applyPreviewHighlightColorAction);
+        ArgumentNullException.ThrowIfNull(applyDefaultPreviewOpacityAction);
 
         _settingsRepository = settingsRepository;
         _autoStartService = autoStartService;
         _applyAction = applyAction;
         _applyPreviewHighlightColorAction = applyPreviewHighlightColorAction;
+        _applyDefaultPreviewOpacityAction = applyDefaultPreviewOpacityAction;
         _autoStartInBackground = _settingsRepository.Read(config => config.AutoStartInBackground);
     }
 
@@ -161,6 +166,61 @@ public class SettingsViewModel : ObservableObject
                 value,
                 config => config.ChangeOpacityOnHover,
                 (config, currentValue) => config.ChangeOpacityOnHover = currentValue
+            );
+    }
+
+    public double DefaultPreviewOpacity
+    {
+        get => ReadSetting(config => config.DefaultPreviewOpacity);
+        set
+        {
+            double clamped = Math.Clamp(
+                value,
+                FloatingPreviewHoverAdjustment.MinOpacity,
+                FloatingPreviewHoverAdjustment.MaxOpacity
+            );
+
+            bool updated = false;
+            _settingsRepository.Update(config =>
+            {
+                bool opacityChanged =
+                    Math.Abs(config.DefaultPreviewOpacity - clamped) >= double.Epsilon;
+                bool floatingChanged = false;
+                foreach (WindowConfig? windowConfig in config.FloatingWindowsConfig)
+                {
+                    if (windowConfig is null)
+                        continue;
+                    if (Math.Abs(windowConfig.PreviewOpacity - clamped) < double.Epsilon)
+                        continue;
+                    windowConfig.PreviewOpacity = clamped;
+                    floatingChanged = true;
+                }
+
+                if (!opacityChanged && !floatingChanged)
+                    return;
+
+                config.DefaultPreviewOpacity = clamped;
+                updated = true;
+            });
+
+            if (!updated)
+                return;
+
+            OnPropertyChanged();
+            _applyDefaultPreviewOpacityAction(clamped);
+        }
+    }
+
+    public int PreviewFrameRate
+    {
+        get => ReadSetting(config => config.PreviewFrameRate);
+        set =>
+            UpdateSetting(
+                nameof(PreviewFrameRate),
+                Math.Clamp(value, min: 0, max: 30),
+                config => config.PreviewFrameRate,
+                (config, currentValue) => config.PreviewFrameRate = currentValue,
+                applyToWindows: true
             );
     }
 

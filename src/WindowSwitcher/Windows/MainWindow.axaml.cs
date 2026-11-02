@@ -80,7 +80,7 @@ public partial class MainWindow : Window, IFloatingWindowHost
             _configurationService.GetBlacklistPrefixes().ToList(),
             onWhitelistChanged: () => ViewModel.ClearClosedFloatingPreviews()
         );
-        SettingsWindow = new SettingsWindow(ApplySettings);
+        SettingsWindow = new SettingsWindow(ApplySettings, ApplyDefaultPreviewOpacity);
         KeybindsWindow = new KeybindsWindow(() => ViewModel.WindowsConfigs.ToArray());
         AppInfoWindow = new AppInfoWindow(RequestApplicationShutdown)
         {
@@ -420,6 +420,11 @@ public partial class MainWindow : Window, IFloatingWindowHost
     public void ApplySettings()
     {
         _floatingWindowRegistry.ApplySettings();
+    }
+
+    public void ApplyDefaultPreviewOpacity(double opacity)
+    {
+        _floatingWindowRegistry.ApplyDefaultPreviewOpacity(opacity);
     }
 
     private void RequestApplicationShutdown()

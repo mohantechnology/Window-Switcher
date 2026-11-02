@@ -17,6 +17,8 @@ public class ConfigFile
     public bool FocusOnHover { get; set; } = false;
     public bool ChangeSizeOnHover { get; set; } = true;
     public bool ChangeOpacityOnHover { get; set; } = true;
+    public double DefaultPreviewOpacity { get; set; } = 1.0;
+    public int PreviewFrameRate { get; set; } = 1;
     public int WindowWidth { get; set; } = 300;
     public int WindowHeight { get; set; } = 200;
     public string PreviewHighlightColor { get; set; } = "#E3008C";

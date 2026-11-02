@@ -94,7 +94,7 @@ public class WindowConfig : INotifyPropertyChanged
             field = value;
             OnPropertyChanged();
         }
-    } = 0.8;
+    } = 1.0;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

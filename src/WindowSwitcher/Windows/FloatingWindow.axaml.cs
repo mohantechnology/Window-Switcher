@@ -153,6 +153,12 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             // Position only for existing window configurations, avoid the window to pop outside the viewport on Linux
             Position = new PixelPoint(WindowConfig.WindowLeft, WindowConfig.WindowTop);
         }
+        else
+        {
+            WindowConfig.PreviewOpacity = _floatingWindowSettingsService
+                .GetAppearanceSettings()
+                .DefaultPreviewOpacity;
+        }
 
         WindowLabel.Content = WindowConfig.ShortWindowTitle;
 
@@ -599,6 +605,17 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     public void ApplySettings()
     {
         ApplySettingsCore(refreshPreviewPipeline: true);
+    }
+
+    public void ApplyDefaultPreviewOpacity(double opacity)
+    {
+        WindowConfig.PreviewOpacity = Math.Clamp(
+            opacity,
+            FloatingPreviewHoverAdjustment.MinOpacity,
+            FloatingPreviewHoverAdjustment.MaxOpacity
+        );
+        ApplyPreviewOpacity();
+        _floatingWindowSettingsService.Save(WindowConfig);
     }
 
     public void RequestCloseFromHost()

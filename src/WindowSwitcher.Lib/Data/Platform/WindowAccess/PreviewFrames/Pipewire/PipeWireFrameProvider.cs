@@ -100,8 +100,26 @@ internal sealed class PipeWireFrameProvider
             if (capture is null)
                 yield break;
 
+            bool snapshotOnly = PreviewFrameTiming.FramesPerSecond <= 0;
             await foreach (PreviewFrame frame in capture.Stream.ReadFramesAsync(cancellationToken))
+            {
                 yield return frame;
+                if (!snapshotOnly)
+                    continue;
+
+                capture.Stream.SetActive(false);
+                try
+                {
+                    // Keep the stream open so the consumer does not reconnect and recapture.
+                    await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // The consumer stopped streaming while holding the snapshot.
+                }
+
+                yield break;
+            }
 
             if (cancellationToken.IsCancellationRequested)
                 yield break;

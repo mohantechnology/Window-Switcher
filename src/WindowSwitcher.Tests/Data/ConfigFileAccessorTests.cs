@@ -43,6 +43,8 @@ public sealed class ConfigFileAccessorTests
             Assert.True(sut.Config.EnablePinFocusedWindow);
             Assert.True(sut.Config.ChangeSizeOnHover);
             Assert.True(sut.Config.ChangeOpacityOnHover);
+            Assert.Equal(1.0, sut.Config.DefaultPreviewOpacity);
+            Assert.Equal(1, sut.Config.PreviewFrameRate);
             Assert.Equal(new ConfigFile().SentryDsn, sut.Config.SentryDsn);
             Assert.True(Guid.TryParse(sut.Config.TelemetryInstallationId, out _));
 

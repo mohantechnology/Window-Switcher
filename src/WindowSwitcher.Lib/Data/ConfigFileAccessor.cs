@@ -3,6 +3,7 @@ using Serilog;
 using WindowSwitcher.Lib.Data.Platform;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Models;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Utilities;
+using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Abstractions;
 using WindowSwitcher.Lib.Models;
 
 namespace WindowSwitcher.Lib.Data;
@@ -535,6 +536,14 @@ public class ConfigFileAccessor
         else
             config.TelemetryInstallationId = Guid.NewGuid().ToString("D");
 
+        config.DefaultPreviewOpacity = Math.Clamp(
+            config.DefaultPreviewOpacity,
+            FloatingPreviewHoverAdjustment.MinOpacity,
+            FloatingPreviewHoverAdjustment.MaxOpacity
+        );
+        config.PreviewFrameRate = PreviewFrameTiming.Clamp(config.PreviewFrameRate);
+        PreviewFrameTiming.SetFramesPerSecond(config.PreviewFrameRate);
+
         config.FloatingWindowsConfig = (config.FloatingWindowsConfig ?? [])
             .Where(windowConfig => windowConfig is not null)
             .Select(windowConfig =>
@@ -547,7 +556,7 @@ public class ConfigFileAccessor
                     || clone.PreviewOpacity > FloatingPreviewHoverAdjustment.MaxOpacity
                 )
                 {
-                    clone.PreviewOpacity = 0.8;
+                    clone.PreviewOpacity = config.DefaultPreviewOpacity;
                 }
 
                 return clone;
@@ -683,6 +692,8 @@ public class ConfigFileAccessor
             FocusOnHover = config.FocusOnHover,
             ChangeSizeOnHover = config.ChangeSizeOnHover,
             ChangeOpacityOnHover = config.ChangeOpacityOnHover,
+            DefaultPreviewOpacity = config.DefaultPreviewOpacity,
+            PreviewFrameRate = config.PreviewFrameRate,
             WindowWidth = config.WindowWidth,
             WindowHeight = config.WindowHeight,
             PreviewHighlightColor = config.PreviewHighlightColor,

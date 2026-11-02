@@ -14,14 +14,15 @@ public partial class SettingsWindow : Window
     private readonly UtilityWindowService _windowLifecycle = new();
     private readonly SettingsViewModel _viewModel;
 
-    public SettingsWindow(Action applyAction)
+    public SettingsWindow(Action applyAction, Action<double> applyDefaultPreviewOpacityAction)
     {
         InitializeComponent();
         _viewModel = new SettingsViewModel(
             new ConfigFileSettingsRepository(),
             AppServiceProvider.GetRequiredService<IAutoStartService>(),
             applyAction,
-            ApplyPreviewHighlightColor
+            ApplyPreviewHighlightColor,
+            applyDefaultPreviewOpacityAction
         );
         DataContext = _viewModel;
         Closing += OnClosing;

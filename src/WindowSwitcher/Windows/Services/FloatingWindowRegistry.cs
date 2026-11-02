@@ -102,6 +102,12 @@ internal sealed class FloatingWindowRegistry
             floatingWindow.ApplySettings();
     }
 
+    public void ApplyDefaultPreviewOpacity(double opacity)
+    {
+        foreach (FloatingWindow floatingWindow in _windows.Values.ToList())
+            floatingWindow.ApplyDefaultPreviewOpacity(opacity);
+    }
+
     public void CloseAll()
     {
         foreach (FloatingWindow floatingWindow in _windows.Values.ToList())

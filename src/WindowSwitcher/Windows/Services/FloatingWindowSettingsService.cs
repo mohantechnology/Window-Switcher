@@ -27,7 +27,9 @@ internal sealed record FloatingWindowAppearanceSettings(
     bool UseFixedWindowSize,
     int WindowWidth,
     int WindowHeight,
-    string PreviewHighlightColor
+    string PreviewHighlightColor,
+    double DefaultPreviewOpacity,
+    int PreviewFrameRate
 );
 
 internal sealed class ConfigFileFloatingWindowSettingsService : IFloatingWindowSettingsService
@@ -60,7 +62,9 @@ internal sealed class ConfigFileFloatingWindowSettingsService : IFloatingWindowS
                 config.UseFixedWindowSize,
                 config.WindowWidth,
                 config.WindowHeight,
-                config.PreviewHighlightColor
+                config.PreviewHighlightColor,
+                config.DefaultPreviewOpacity,
+                config.PreviewFrameRate
             ));
     }
 
