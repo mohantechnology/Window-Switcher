@@ -414,7 +414,13 @@ public partial class MainWindow : Window, IFloatingWindowHost
         if (string.IsNullOrWhiteSpace(windowId) || StaticData.AppClosing)
             return;
 
-        Dispatcher.UIThread.Post(() => ViewModel.TryPinWindow(windowId));
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (ViewModel.TryPinWindow(windowId) != PinWindowResult.AlreadyOpen)
+                return;
+
+            _floatingWindowRegistry.PulseAlreadyOpen(windowId);
+        });
     }
 
     public void ApplySettings()

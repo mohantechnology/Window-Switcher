@@ -96,6 +96,12 @@ internal sealed class FloatingWindowRegistry
         return false;
     }
 
+    public void PulseAlreadyOpen(string windowId)
+    {
+        if (TryGet(windowId, out FloatingWindow floatingWindow))
+            floatingWindow.PulseAlreadyOpen();
+    }
+
     public void ApplySettings()
     {
         foreach (FloatingWindow floatingWindow in _windows.Values.ToList())

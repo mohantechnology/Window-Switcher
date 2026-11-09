@@ -35,3 +35,4 @@ WindowSwitcherWinSetup/.vs/WindowSwitcherWinSetup/v17/.suo
 /build/artifacts
 *.user
 .vscode/settings.json
+tasks.txt

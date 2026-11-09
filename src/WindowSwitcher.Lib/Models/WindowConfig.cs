@@ -46,7 +46,7 @@ public class WindowConfig : INotifyPropertyChanged
             field = value;
             OnPropertyChanged();
         }
-    } = 100;
+    } = FloatingWindowInitialSize.FallbackWidth;
 
     public int WindowHeight
     {
@@ -58,7 +58,7 @@ public class WindowConfig : INotifyPropertyChanged
             field = value;
             OnPropertyChanged();
         }
-    } = 83;
+    } = FloatingWindowInitialSize.FallbackHeight;
 
     public int WindowLeft
     {

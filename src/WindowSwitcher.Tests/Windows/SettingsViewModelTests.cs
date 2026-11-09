@@ -80,6 +80,59 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void UseDefaultWindowSize_DefaultsToTrueAndPersistsWithoutResizingOpenWindows()
+    {
+        var repository = new FakeSettingsRepository();
+        int applyActionInvocationCount = 0;
+        var sut = CreateSut(repository, applyAction: () => applyActionInvocationCount++);
+
+        Assert.True(sut.UseDefaultWindowSize);
+        Assert.True(sut.CanEditWindowSize);
+
+        sut.UseDefaultWindowSize = false;
+
+        Assert.False(repository.Config.UseDefaultWindowSize);
+        Assert.False(sut.UseDefaultWindowSize);
+        Assert.False(sut.CanEditWindowSize);
+        Assert.Equal(0, applyActionInvocationCount);
+    }
+
+    [Fact]
+    public void WindowSize_AppliesToOpenWindowsOnlyWhenFixedSizeIsOn()
+    {
+        var repository = new FakeSettingsRepository();
+        repository.Config.UseFixedWindowSize = false;
+        int applyActionInvocationCount = 0;
+        var sut = CreateSut(repository, applyAction: () => applyActionInvocationCount++);
+
+        sut.WindowWidth = 640;
+
+        Assert.Equal(640, repository.Config.WindowWidth);
+        Assert.Equal(0, applyActionInvocationCount);
+
+        sut.UseFixedWindowSize = true;
+        sut.WindowHeight = 360;
+
+        Assert.Equal(360, repository.Config.WindowHeight);
+        Assert.Equal(2, applyActionInvocationCount);
+    }
+
+    [Fact]
+    public void CanEditWindowSize_IsEnabledWhenEitherSizeOptionIsOn()
+    {
+        var repository = new FakeSettingsRepository();
+        repository.Config.UseDefaultWindowSize = false;
+        repository.Config.UseFixedWindowSize = false;
+        var sut = CreateSut(repository);
+
+        Assert.False(sut.CanEditWindowSize);
+
+        sut.UseFixedWindowSize = true;
+
+        Assert.True(sut.CanEditWindowSize);
+    }
+
+    [Fact]
     public void DefaultPreviewOpacity_DefaultsToFullAndAppliesToOpenWindows()
     {
         var repository = new FakeSettingsRepository();

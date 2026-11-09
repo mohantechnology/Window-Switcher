@@ -11,6 +11,13 @@ using WindowSwitcher.ViewModels.Abstractions;
 
 namespace WindowSwitcher.ViewModels;
 
+public enum PinWindowResult
+{
+    Ignored,
+    Added,
+    AlreadyOpen,
+}
+
 public partial class WindowListViewModel : ObservableObject, IDisposable
 {
     private const int WindowListRefreshIntervalMs = 250;
@@ -163,10 +170,10 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    public bool TryPinWindow(string windowId)
+    public PinWindowResult TryPinWindow(string windowId)
     {
         if (string.IsNullOrWhiteSpace(windowId))
-            return false;
+            return PinWindowResult.Ignored;
 
         ClosedFloatingPreviewIds.Remove(windowId);
 
@@ -176,14 +183,14 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         if (alreadyListed)
         {
             PinnedWindowIds.Add(windowId);
-            return true;
+            return PinWindowResult.AlreadyOpen;
         }
 
         if (!PinnedWindowIds.Add(windowId))
-            return false;
+            return PinWindowResult.Ignored;
 
         _ = FetchWindowsWithFiltersAsync();
-        return true;
+        return PinWindowResult.Added;
     }
 
     /// <summary>

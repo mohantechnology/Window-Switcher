@@ -28,6 +28,8 @@ namespace WindowSwitcher.Windows;
 public partial class FloatingWindow : Window, IFloatingPreviewWindow
 {
     private const double ResizeGripThickness = 8d;
+    private const int AttentionPulseStepMilliseconds = 160;
+    private const int AttentionPulseStepCount = 6;
     private static readonly ILogger Logger = Log.ForContext<FloatingWindow>();
     private static readonly Cursor DefaultCursor = new(StandardCursorType.Arrow);
     private static readonly Cursor TopSideCursor = new(StandardCursorType.TopSide);
@@ -49,12 +51,20 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     private readonly IBrush _pendingSelectionBorderBrush;
     private readonly FloatingCloseOverlayWindow _closeOverlay;
     private volatile bool _isPointerInside;
+    private bool _leftGestureActive;
+    private long _leftGestureStartedAtMs;
+    private int _leftGestureStartX;
+    private int _leftGestureStartY;
+    private bool _leftGestureResizeStarted;
+    private bool _leftGestureMoved;
     private bool _closeRequestedByHost;
     private bool _isPreviewSelected;
     private bool _isSelectionPending;
     private bool _isFloatingContentHovered;
     private bool _isCloseOverlayHovered;
     private DispatcherTimer? _closeOverlayHideTimer;
+    private DispatcherTimer? _attentionPulseTimer;
+    private int _attentionPulseStepsRemaining;
     private readonly IFloatingWindowHost _floatingWindowHost;
     private readonly WinAccessorBase _winAccessorBase;
     private readonly IFloatingPreviewPolicy _floatingPreviewPolicy;
@@ -92,6 +102,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         _metaKeyStateReader = AppServiceProvider.GetRequiredService<IMetaKeyStateReader>();
         var nativeThumbnailRenderer =
             AppServiceProvider.GetRequiredService<INativeThumbnailRenderer>();
+        var windowStillImageCapture =
+            AppServiceProvider.GetRequiredService<IWindowStillImageCapture>();
         _floatingWindowHandleConfigurator =
             AppServiceProvider.GetRequiredService<IFloatingWindowHandleConfigurator>();
 
@@ -118,6 +130,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             previewFrameProvider,
             _floatingPreviewPolicy,
             nativeThumbnailRenderer,
+            windowStillImageCapture,
             WindowScreenshot,
             DmaBufPreview,
             PreviewBorder
@@ -146,18 +159,32 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         WindowConfig? settingsConfig = _floatingWindowSettingsService.GetPersistedConfig(
             WindowConfig
         );
-        if (settingsConfig != null)
+        bool hasPersistedLayout = false;
+        if (settingsConfig is not null)
         {
+            hasPersistedLayout = true;
             WindowConfig = settingsConfig;
 
             // Position only for existing window configurations, avoid the window to pop outside the viewport on Linux
             Position = new PixelPoint(WindowConfig.WindowLeft, WindowConfig.WindowTop);
         }
-        else
+
+        if (!hasPersistedLayout)
         {
-            WindowConfig.PreviewOpacity = _floatingWindowSettingsService
-                .GetAppearanceSettings()
-                .DefaultPreviewOpacity;
+            FloatingWindowAppearanceSettings appearance =
+                _floatingWindowSettingsService.GetAppearanceSettings();
+            WindowConfig.PreviewOpacity = appearance.DefaultPreviewOpacity;
+            (int width, int height) = FloatingWindowInitialSize.Resolve(
+                hasPersistedLayout: false,
+                persistedWidth: WindowConfig.WindowWidth,
+                persistedHeight: WindowConfig.WindowHeight,
+                useDefaultWindowSize: appearance.UseDefaultWindowSize,
+                useFixedWindowSize: appearance.UseFixedWindowSize,
+                configuredWidth: appearance.WindowWidth,
+                configuredHeight: appearance.WindowHeight
+            );
+            WindowConfig.WindowWidth = width;
+            WindowConfig.WindowHeight = height;
         }
 
         WindowLabel.Content = WindowConfig.ShortWindowTitle;
@@ -216,13 +243,27 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     {
         _floatingWindowHost.SetActivePreview(this);
 
-        bool moveWindows = _floatingWindowSettingsService.GetBehaviorSettings().MoveWindows;
+        PointerPoint pointerPoint = e.GetCurrentPoint(this);
+        if (pointerPoint.Properties.IsLeftButtonPressed)
+            BeginLeftClickGesture();
+        else
+            _leftGestureActive = false;
 
         if (TryBeginResizeDrag(e))
             return;
 
-        if (moveWindows)
+        if (_floatingWindowSettingsService.GetBehaviorSettings().MoveWindows)
             BeginMoveDrag(e);
+    }
+
+    private void BeginLeftClickGesture()
+    {
+        _leftGestureActive = true;
+        _leftGestureStartedAtMs = Environment.TickCount64;
+        _leftGestureStartX = Position.X;
+        _leftGestureStartY = Position.Y;
+        _leftGestureResizeStarted = false;
+        _leftGestureMoved = false;
     }
 
     private bool TryBeginResizeDrag(PointerPressedEventArgs e)
@@ -238,6 +279,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         if (!resizeEdge.HasValue)
             return false;
 
+        _leftGestureResizeStarted = true;
         BeginResizeDrag(resizeEdge.Value, e);
         return true;
     }
@@ -303,6 +345,27 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
     private void CanvasPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (e.InitialPressMouseButton != MouseButton.Left || !_leftGestureActive)
+        {
+            _leftGestureActive = false;
+            return;
+        }
+
+        long holdDurationMs = Environment.TickCount64 - _leftGestureStartedAtMs;
+        bool activate = FloatingPreviewClickGesture.IsActivationClick(
+            holdDurationMs,
+            _leftGestureStartX,
+            _leftGestureStartY,
+            Position.X,
+            Position.Y,
+            _leftGestureResizeStarted,
+            _leftGestureMoved
+        );
+        _leftGestureActive = false;
+
+        if (!activate)
+            return;
+
         _ = RaiseWindowAndNotifyActivationAsync();
     }
 
@@ -321,6 +384,19 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
     private void FloatingWindowPositionChanged(object? sender, PixelPointEventArgs e)
     {
+        if (
+            _leftGestureActive
+            && FloatingPreviewClickGesture.ExceedsDragThreshold(
+                _leftGestureStartX,
+                _leftGestureStartY,
+                Position.X,
+                Position.Y
+            )
+        )
+        {
+            _leftGestureMoved = true;
+        }
+
         if (_closeOverlay.IsVisible)
             _closeOverlay.RepositionAbove(this);
     }
@@ -567,6 +643,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         e.Cancel = !allowClose;
         if (!e.Cancel)
         {
+            StopAttentionPulse(restoreHighlight: false);
             CancelCloseOverlayHide();
             _closeOverlay.HideOverlay();
             _closeOverlay.Close();
@@ -582,15 +659,58 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     public void SetPreviewHighlight(bool isSelected)
     {
         _isPreviewSelected = isSelected;
-        if (!_isSelectionPending)
+        if (!_isSelectionPending && _attentionPulseTimer is null)
             _service.SetPreviewHighlight(isSelected);
+    }
+
+    /// <summary>
+    /// Blinks the preview border so a pin of an already-open window is visible.
+    /// </summary>
+    public void PulseAlreadyOpen()
+    {
+        StopAttentionPulse(restoreHighlight: false);
+        _attentionPulseStepsRemaining = AttentionPulseStepCount;
+        _service.SetPreviewHighlight(true);
+        _attentionPulseTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(AttentionPulseStepMilliseconds),
+        };
+        _attentionPulseTimer.Tick += OnAttentionPulseTick;
+        _attentionPulseTimer.Start();
+    }
+
+    private void OnAttentionPulseTick(object? sender, EventArgs e)
+    {
+        _attentionPulseStepsRemaining--;
+        if (_attentionPulseStepsRemaining <= 0)
+        {
+            StopAttentionPulse(restoreHighlight: true);
+            return;
+        }
+
+        _service.SetPreviewHighlight(_attentionPulseStepsRemaining % 2 == 0);
+    }
+
+    private void StopAttentionPulse(bool restoreHighlight)
+    {
+        if (_attentionPulseTimer is not null)
+        {
+            _attentionPulseTimer.Stop();
+            _attentionPulseTimer.Tick -= OnAttentionPulseTick;
+            _attentionPulseTimer = null;
+        }
+
+        _attentionPulseStepsRemaining = 0;
+        if (restoreHighlight)
+            _service.SetPreviewHighlight(_isSelectionPending || _isPreviewSelected);
     }
 
     internal void SetSelectionPending(bool isPending)
     {
         _isSelectionPending = isPending;
         ApplyPreviewBorderAppearance();
-        _service.SetPreviewHighlight(isPending || _isPreviewSelected);
+        if (_attentionPulseTimer is null)
+            _service.SetPreviewHighlight(isPending || _isPreviewSelected);
     }
 
     public void UpdateWindowTitle(string newTitle)
@@ -624,6 +744,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             return;
 
         _closeRequestedByHost = true;
+        StopAttentionPulse(restoreHighlight: false);
         CancelCloseOverlayHide();
         _closeOverlay.HideOverlay();
         _service.Stop(WindowConfig.WindowId);

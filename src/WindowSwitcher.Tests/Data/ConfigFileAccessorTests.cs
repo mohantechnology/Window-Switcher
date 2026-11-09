@@ -550,6 +550,31 @@ public sealed class ConfigFileAccessorTests
     }
 
     [Fact]
+    public void UseDefaultWindowSize_DefaultsToTrueWhenMissing_AndRoundTripsFalse()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            File.WriteAllText(Path.Combine(dataFolder, "config.json"), "{ }");
+            var loaded = CreateAccessor(dataFolder);
+            Assert.True(loaded.ReadConfig(config => config.UseDefaultWindowSize));
+
+            loaded.UpdateConfig(config => config.UseDefaultWindowSize = false);
+
+            string json = File.ReadAllText(loaded.GetFilePath());
+            Assert.Contains("\"UseDefaultWindowSize\": false", json, StringComparison.Ordinal);
+            Assert.False(loaded.ReadConfig(config => config.UseDefaultWindowSize));
+
+            var reloaded = CreateAccessor(dataFolder);
+            Assert.False(reloaded.Config.UseDefaultWindowSize);
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
     public void UpdateConfig_PersistsAutoStartInBackground()
     {
         string dataFolder = CreateTempDataFolder();

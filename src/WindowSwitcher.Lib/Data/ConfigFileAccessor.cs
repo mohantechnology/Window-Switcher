@@ -689,6 +689,7 @@ public class ConfigFileAccessor
             SentryDsn = config.SentryDsn,
             TelemetryInstallationId = config.TelemetryInstallationId,
             UseFixedWindowSize = config.UseFixedWindowSize,
+            UseDefaultWindowSize = config.UseDefaultWindowSize,
             FocusOnHover = config.FocusOnHover,
             ChangeSizeOnHover = config.ChangeSizeOnHover,
             ChangeOpacityOnHover = config.ChangeOpacityOnHover,

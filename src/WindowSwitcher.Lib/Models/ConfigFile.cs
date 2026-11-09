@@ -14,13 +14,14 @@ public class ConfigFile
     public string TelemetryInstallationId { get; set; } = Guid.NewGuid().ToString("D");
 
     public bool UseFixedWindowSize { get; set; } = false;
+    public bool UseDefaultWindowSize { get; set; } = true;
     public bool FocusOnHover { get; set; } = false;
     public bool ChangeSizeOnHover { get; set; } = true;
     public bool ChangeOpacityOnHover { get; set; } = true;
     public double DefaultPreviewOpacity { get; set; } = 1.0;
     public int PreviewFrameRate { get; set; } = 1;
-    public int WindowWidth { get; set; } = 300;
-    public int WindowHeight { get; set; } = 200;
+    public int WindowWidth { get; set; } = FloatingWindowInitialSize.FallbackWidth;
+    public int WindowHeight { get; set; } = FloatingWindowInitialSize.FallbackHeight;
     public string PreviewHighlightColor { get; set; } = "#E3008C";
     public bool EnablePreviews { get; set; } = true;
     public bool EnablePinFocusedWindow { get; set; } = true;

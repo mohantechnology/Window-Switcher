@@ -25,6 +25,7 @@ internal sealed record FloatingWindowBehaviorSettings(
 internal sealed record FloatingWindowAppearanceSettings(
     bool ResizeWindows,
     bool UseFixedWindowSize,
+    bool UseDefaultWindowSize,
     int WindowWidth,
     int WindowHeight,
     string PreviewHighlightColor,
@@ -60,6 +61,7 @@ internal sealed class ConfigFileFloatingWindowSettingsService : IFloatingWindowS
             .ReadConfig(config => new FloatingWindowAppearanceSettings(
                 config.ResizeWindows,
                 config.UseFixedWindowSize,
+                config.UseDefaultWindowSize,
                 config.WindowWidth,
                 config.WindowHeight,
                 config.PreviewHighlightColor,

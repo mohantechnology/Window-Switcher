@@ -40,6 +40,22 @@ public sealed class PlatformPoliciesTests
         Assert.False(renderer.TryUpdateOpacity(thumbnailHandle: 1, opacity: 128));
     }
 
+    [Fact]
+    public void NoOpWindowStillImageCapture_DoesNotCapture()
+    {
+        var capture = new NoOpWindowStillImageCapture();
+
+        bool captured = capture.TryCapture(
+            windowHandle: 1,
+            maxWidthPx: 100,
+            maxHeightPx: 100,
+            out WindowStillImage? image
+        );
+
+        Assert.False(captured);
+        Assert.Null(image);
+    }
+
     [Theory]
     [InlineData(0.8, 204)]
     [InlineData(1.0, 255)]

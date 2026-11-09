@@ -78,7 +78,7 @@ public sealed class WindowListViewModelTests
         await sut.FetchWindowsWithFiltersAsync();
         Assert.Equal("2", Assert.Single(sut.WindowsConfigs).WindowId);
 
-        Assert.True(sut.TryPinWindow("1"));
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
         await sut.FetchWindowsWithFiltersAsync();
 
         Assert.Equal(2, sut.WindowsConfigs.Count);
@@ -87,7 +87,7 @@ public sealed class WindowListViewModelTests
     }
 
     [Fact]
-    public async Task TryPinWindow_ReturnsTrueWhenPreviewAlreadyExists()
+    public async Task TryPinWindow_ReturnsAlreadyOpenWhenPreviewAlreadyExists()
     {
         var snapshotProvider = new FakeWindowSnapshotProvider([
             new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
@@ -95,7 +95,9 @@ public sealed class WindowListViewModelTests
         using var sut = CreateViewModel(snapshotProvider);
         await sut.FetchWindowsWithFiltersAsync();
 
-        Assert.True(sut.TryPinWindow("1"));
+        Assert.Equal(PinWindowResult.AlreadyOpen, sut.TryPinWindow("1"));
+        Assert.Equal(PinWindowResult.AlreadyOpen, sut.TryPinWindow("1"));
+        Assert.Single(sut.WindowsConfigs);
         Assert.Contains("1", sut.PinnedWindowIds);
     }
 
@@ -106,7 +108,7 @@ public sealed class WindowListViewModelTests
             new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
         ]);
         using var sut = CreateViewModel(snapshotProvider);
-        Assert.True(sut.TryPinWindow("1"));
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
         await sut.FetchWindowsWithFiltersAsync();
         Assert.Single(sut.WindowsConfigs);
 
@@ -126,7 +128,7 @@ public sealed class WindowListViewModelTests
         ]);
         using var sut = CreateViewModel(snapshotProvider);
         await sut.FetchWindowsWithFiltersAsync();
-        Assert.True(sut.TryPinWindow("1"));
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
         await sut.FetchWindowsWithFiltersAsync();
         Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
 
@@ -146,11 +148,11 @@ public sealed class WindowListViewModelTests
             new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
         ]);
         using var sut = CreateViewModel(snapshotProvider);
-        Assert.True(sut.TryPinWindow("1"));
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
         await sut.FetchWindowsWithFiltersAsync();
         Assert.True(sut.TryCloseFloatingPreview("1"));
 
-        Assert.True(sut.TryPinWindow("1"));
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
         await sut.FetchWindowsWithFiltersAsync();
 
         Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");

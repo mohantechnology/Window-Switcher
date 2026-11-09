@@ -86,7 +86,9 @@
                                   IsEnabled="{Binding CanEditResizeWindows}" />
                         <CheckBox Content="Fixed size"
                                   IsChecked="{Binding UseFixedWindowSize, Mode=TwoWay}" />
-                        <Grid IsEnabled="{Binding UseFixedWindowSize}"
+                        <CheckBox Content="Default window size"
+                                  IsChecked="{Binding UseDefaultWindowSize, Mode=TwoWay}" />
+                        <Grid IsEnabled="{Binding CanEditWindowSize}"
                               Margin="18 0 0 0"
                               HorizontalAlignment="Stretch"
                               ColumnDefinitions="*,Auto"

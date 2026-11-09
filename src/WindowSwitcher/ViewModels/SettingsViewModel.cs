@@ -121,6 +121,8 @@ public class SettingsViewModel : ObservableObject
 
     public bool CanEditResizeWindows => !UseFixedWindowSize;
 
+    public bool CanEditWindowSize => UseFixedWindowSize || UseDefaultWindowSize;
+
     public bool MoveWindows
     {
         get => ReadSetting(config => config.MoveWindows);
@@ -237,7 +239,26 @@ public class SettingsViewModel : ObservableObject
                 applyToWindows: true
             );
             if (updated)
+            {
                 OnPropertyChanged(nameof(CanEditResizeWindows));
+                OnPropertyChanged(nameof(CanEditWindowSize));
+            }
+        }
+    }
+
+    public bool UseDefaultWindowSize
+    {
+        get => ReadSetting(config => config.UseDefaultWindowSize);
+        set
+        {
+            bool updated = UpdateSetting(
+                nameof(UseDefaultWindowSize),
+                value,
+                config => config.UseDefaultWindowSize,
+                (config, currentValue) => config.UseDefaultWindowSize = currentValue
+            );
+            if (updated)
+                OnPropertyChanged(nameof(CanEditWindowSize));
         }
     }
 
@@ -250,7 +271,7 @@ public class SettingsViewModel : ObservableObject
                 value,
                 config => config.WindowWidth,
                 (config, currentValue) => config.WindowWidth = currentValue,
-                applyToWindows: true
+                applyToWindows: UseFixedWindowSize
             );
     }
 
@@ -263,7 +284,7 @@ public class SettingsViewModel : ObservableObject
                 value,
                 config => config.WindowHeight,
                 (config, currentValue) => config.WindowHeight = currentValue,
-                applyToWindows: true
+                applyToWindows: UseFixedWindowSize
             );
     }
 
