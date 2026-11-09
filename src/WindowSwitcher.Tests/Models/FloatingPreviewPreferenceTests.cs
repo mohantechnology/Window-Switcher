@@ -29,18 +29,22 @@ public sealed class FloatingPreviewPreferenceTests
     }
 
     [Fact]
-    public void TitleBandHeight_ReservesTwentySixPixelsAtTheDefaultFontSize()
+    public void TitleBandHeight_ReservesTwoLinesAtTheDefaultFontSize()
     {
         Assert.Equal(10, FloatingWindowLabelLayout.DefaultFontSize);
-        Assert.Equal(26, FloatingWindowLabelLayout.TitleBandHeight(10));
+        Assert.Equal(14, FloatingWindowLabelLayout.LineHeight(10));
+        Assert.Equal(36, FloatingWindowLabelLayout.TitleBandHeight(10));
     }
 
     [Theory]
-    [InlineData(8, 24)]
-    [InlineData(32, 48)]
-    [InlineData(1, 24)]
-    [InlineData(100, 48)]
-    public void TitleBandHeight_ClampsFontSizeThenAddsSixteen(int fontSize, int expectedHeight)
+    [InlineData(8, 32)]
+    [InlineData(32, 98)]
+    [InlineData(1, 32)]
+    [InlineData(100, 98)]
+    public void TitleBandHeight_ReservesTwoLinesForTheClampedFontSize(
+        int fontSize,
+        int expectedHeight
+    )
     {
         Assert.Equal(expectedHeight, FloatingWindowLabelLayout.TitleBandHeight(fontSize));
     }

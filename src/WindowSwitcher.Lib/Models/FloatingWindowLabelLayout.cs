@@ -28,10 +28,18 @@ public static class FloatingWindowLabelLayout
     public static int ClampFontSize(int fontSize) => Math.Clamp(fontSize, MinFontSize, MaxFontSize);
 
     /// <summary>
-    /// Height reserved above the thumbnail for the window name.
-    /// A font size of 10 reserves 26px.
+    /// Line height for one row of the floating-window label.
+    /// </summary>
+    /// <param name="fontSize">Label font size, clamped to the supported range.</param>
+    /// <returns>The line height in device-independent pixels.</returns>
+    public static int LineHeight(int fontSize) =>
+        (int)Math.Ceiling(ClampFontSize(fontSize) * 1.4);
+
+    /// <summary>
+    /// Height reserved above the thumbnail for up to two label lines.
+    /// A font size of 10 reserves 36px.
     /// </summary>
     /// <param name="fontSize">Label font size, clamped to the supported range.</param>
     /// <returns>The title band height in device-independent pixels.</returns>
-    public static int TitleBandHeight(int fontSize) => ClampFontSize(fontSize) + 16;
+    public static int TitleBandHeight(int fontSize) => (LineHeight(fontSize) * 2) + 8;
 }

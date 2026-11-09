@@ -134,6 +134,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             _isCloseOverlayHovered = false;
             ScheduleCloseOverlayHide();
         };
+        _closeOverlay.RefreshRequested += (_, _) => RefreshThumbnail();
 
         SetInitialWindowSettings();
 
@@ -153,15 +154,17 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
         Show();
         _service.UpdateLayout();
-        _service.Start();
-
         var platformHandle = TryGetPlatformHandle();
         if (platformHandle is not null)
         {
             _floatingWindowHandleConfigurator.Configure(platformHandle.Handle);
-            // Handle exists only after Show; re-apply so Win32 layered alpha takes effect.
+            // Layered style must be applied before the live thumbnail is registered.
+            // Registering first, or from a background thread, leaves a black preview
+            // until live preview is toggled.
             ApplyPreviewOpacity(syncServiceOpacity: true);
         }
+
+        _service.Start();
     }
 
     public sealed override void Show()
@@ -214,8 +217,6 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             WindowConfig.WindowWidth = width;
             WindowConfig.WindowHeight = height;
         }
-
-        WindowLabel.Content = WindowConfig.ShortWindowTitle;
 
         // Avalonia draws its own shadow and frame around BorderOnly windows on X11/XWayland,
         // which shows up as a black margin around the preview; resizing is handled by the canvas.
@@ -634,6 +635,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             return;
         }
 
+        // Refresh sits beside close and is only offered while this preview is frozen.
+        _closeOverlay.SetRefreshVisible(!_service.IsLivePreviewEnabled);
         if (_isFloatingContentHovered || _isCloseOverlayHovered)
             _closeOverlay.ShowAbove(this);
         else
@@ -735,6 +738,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
         WindowConfig.WindowHeight = (Int32)Height;
         WindowConfig.WindowWidth = (Int32)Width;
+        ApplyLabelPresentation();
         _service.OnWindowResized();
         if (_closeOverlay.IsVisible)
             _closeOverlay.RepositionAbove(this);
@@ -831,13 +835,14 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             return;
 
         WindowConfig.WindowTitle = newTitle;
-        WindowLabel.Content = WindowConfig.ShortWindowTitle;
+        ApplyLabelPresentation();
     }
 
     public void ApplySettings()
     {
         SyncLivePreviewOverride();
         ApplySettingsCore(refreshPreviewPipeline: true);
+        UpdateCloseOverlayVisibility();
     }
 
     private void SyncLivePreviewOverride()
@@ -865,6 +870,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         WindowConfig.LivePreviewOverride = !_service.IsLivePreviewEnabled;
         _floatingWindowSettingsService.Save(WindowConfig);
         _service.ApplySettings();
+        UpdateCloseOverlayVisibility();
     }
 
     private void RefreshThumbnail()
@@ -903,7 +909,6 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         _labelFontSize = FloatingWindowLabelLayout.ClampFontSize(
             configSnapshot.FloatingWindowLabelFontSize
         );
-        WindowLabel.FontSize = _labelFontSize;
         if (syncServiceOpacity || refreshPreviewPipeline)
             _service.SetLabelFontSize(_labelFontSize);
 
@@ -920,6 +925,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             Height = WindowConfig.WindowHeight;
         }
 
+        ApplyLabelPresentation();
+
         if (!CanResize)
             WindowCanvas.Cursor = DefaultCursor;
 
@@ -931,6 +938,23 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
         if (refreshPreviewPipeline)
             _service.ApplySettings();
+    }
+
+    private void ApplyLabelPresentation()
+    {
+        WindowLabel.FontSize = _labelFontSize;
+        WindowLabel.LineHeight = FloatingWindowLabelLayout.LineHeight(_labelFontSize);
+        double bandHeight = FloatingWindowLabelLayout.TitleBandHeight(_labelFontSize);
+        WindowLabel.Height = Math.Max(0, bandHeight - 4);
+        double windowWidth = double.IsFinite(Width) && Width > 0 ? Width : 0;
+        WindowLabel.Width = Math.Max(
+            0,
+            windowWidth - 4 - FloatingCloseOverlayWindow.ReservedTopRightWidth
+        );
+        WindowLabel.Text = FloatingWindowLabelText.Format(
+            WindowConfig.WindowTitle,
+            WindowConfig.ProcessName
+        );
     }
 
     private void ApplyPreviewBorderAppearance()

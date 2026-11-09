@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Serilog;
 using WindowSwitcher.Lib.Data.Platform.Interop;
 using WindowSwitcher.Lib.Data.Platform.SystemInfo.Abstractions;
 using WindowSwitcher.Lib.Models;
@@ -11,6 +12,8 @@ namespace WindowSwitcher.Lib.Data.Platform.Policies;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
 {
+    private static readonly ILogger Logger = Log.ForContext<WindowsDwmNativeThumbnailRenderer>();
+
     /// <inheritdoc />
     public bool TryRegister(
         nint destinationWindowHandle,
@@ -30,7 +33,10 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
             out nint registeredThumbnailHandle
         );
         if (result != 0)
+        {
+            Logger.Warning("DWM thumbnail registration failed with result {Result}", result);
             return false;
+        }
 
         int flags =
             DwmFunctions.DWM_TNP_SOURCECLIENTAREAONLY
@@ -68,7 +74,17 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
             rcSource = source,
         };
 
-        DwmFunctions.DwmUpdateThumbnailProperties(registeredThumbnailHandle, ref properties);
+        int updateResult = DwmFunctions.DwmUpdateThumbnailProperties(
+            registeredThumbnailHandle,
+            ref properties
+        );
+        if (updateResult != 0)
+        {
+            DwmFunctions.DwmUnregisterThumbnail(registeredThumbnailHandle);
+            Logger.Warning("DWM thumbnail update failed with result {Result}", updateResult);
+            return false;
+        }
+
         thumbnailHandle = registeredThumbnailHandle;
         return true;
     }

@@ -22,6 +22,7 @@ internal sealed class FloatingWindowService
     private const double PreviewBorderThickness = 2;
     private const int PreviewRequestTimeoutMs = 1_500;
     private const int ResizePreviewRefreshDebounceMs = 250;
+    private static readonly TimeSpan NativePreviewReregisterDelay = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan GpuInitializationTimeout = TimeSpan.FromSeconds(1);
     private static readonly ILogger Logger = Log.ForContext<FloatingWindowService>();
     private readonly Window _ownerWindow;
@@ -58,6 +59,7 @@ internal sealed class FloatingWindowService
     private bool _frozenSnapshotReady;
     private bool _resizePreviewRefreshPending;
     private int _frozenCaptureGeneration;
+    private int _nativePreviewRegistrationVersion;
     private double _titleReservedHeight = FloatingWindowLabelLayout.TitleBandHeight(
         FloatingWindowLabelLayout.DefaultFontSize
     );
@@ -98,7 +100,19 @@ internal sealed class FloatingWindowService
         _previewCaptureSuspendedWhileDisabled = !IsPreviewCaptureEnabled();
     }
 
-    public void Start() => _ = Task.Run(() => RunPreviewLoopAsync(_cts.Token));
+    public void Start()
+    {
+        if (_floatingPreviewPolicy.UseNativeThumbnailPreview)
+        {
+            if (IsPreviewCaptureEnabled())
+                ScheduleNativeLivePreview();
+            else
+                _ = Task.Run(FreezeNativePreviewSafely);
+            return;
+        }
+
+        _ = Task.Run(() => RunPreviewLoopAsync(_cts.Token));
+    }
 
     public void OnWindowResized()
     {
@@ -190,6 +204,7 @@ internal sealed class FloatingWindowService
             return;
 
         _isClosing = true;
+        Interlocked.Increment(ref _nativePreviewRegistrationVersion);
         _dmaBufPreview.ImportFailed -= OnDmaBufImportFailed;
         CancelPendingResizePreviewRefresh(executeRefresh: false);
         _cts.Cancel();
@@ -211,6 +226,9 @@ internal sealed class FloatingWindowService
         if (_isClosing)
             return;
 
+        // Drop a startup registration that has not run yet. This call registers
+        // on the UI thread after the window is already showing.
+        Interlocked.Increment(ref _nativePreviewRegistrationVersion);
         CancelPendingResizePreviewRefresh(executeRefresh: false);
         UpdateLayout();
         CancelPreviewOperations(recreateTokenSource: true);
@@ -240,17 +258,61 @@ internal sealed class FloatingWindowService
             RegisterWindowThumbnail();
     }
 
+    private void ScheduleNativeLivePreview()
+    {
+        // A DWM thumbnail registered before the window is shown, before its layered
+        // style is applied, or from a background thread stays black until it is
+        // registered again. Register after the current layout pass, then once more
+        // once the window has been presented.
+        int version = Interlocked.Increment(ref _nativePreviewRegistrationVersion);
+        Dispatcher.UIThread.Post(
+            () => RegisterNativeLivePreview(version),
+            DispatcherPriority.Loaded
+        );
+        _ = RegisterNativeLivePreviewAfterDelayAsync(version);
+    }
+
+    private async Task RegisterNativeLivePreviewAfterDelayAsync(int version)
+    {
+        try
+        {
+            await Task.Delay(NativePreviewReregisterDelay).ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(() => RegisterNativeLivePreview(version));
+        }
+        catch (Exception exception)
+        {
+            if (_isClosing)
+                return;
+            Logger.Debug(exception, "Delayed native preview registration did not run");
+        }
+    }
+
+    private void RegisterNativeLivePreview(int version)
+    {
+        if (_isClosing || version != Volatile.Read(ref _nativePreviewRegistrationVersion))
+            return;
+        if (!IsPreviewCaptureEnabled())
+            return;
+
+        UpdateLayout();
+        RegisterWindowThumbnail();
+    }
+
+    private void FreezeNativePreviewSafely()
+    {
+        try
+        {
+            if (!_isClosing)
+                FreezeNativeThumbnailPreview();
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(exception, "Freezing preview image failed");
+        }
+    }
+
     private async Task RunPreviewLoopAsync(CancellationToken cancellationToken)
     {
-        if (_floatingPreviewPolicy.UseNativeThumbnailPreview)
-        {
-            if (IsPreviewCaptureEnabled())
-                RegisterWindowThumbnail();
-            else
-                FreezeNativeThumbnailPreview();
-            return;
-        }
-
         try
         {
             await Task.Delay(Random.Shared.Next(0, 400), cancellationToken).ConfigureAwait(false);
@@ -875,10 +937,28 @@ internal sealed class FloatingWindowService
 
     private void RegisterWindowThumbnail()
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!_isClosing)
+                    RegisterWindowThumbnail();
+            });
+            return;
+        }
+
+        if (_isClosing)
+            return;
+
         UnregisterWindowThumbnail();
         IPlatformHandle? platformHandle = _ownerWindow.TryGetPlatformHandle();
         if (platformHandle is null || !long.TryParse(_windowConfig.WindowId, out long sourceHandle))
+        {
+            Logger.Warning(
+                "Native preview registration skipped because a window handle is unavailable"
+            );
             return;
+        }
 
         double scale = _ownerWindow.RenderScaling > 0 ? _ownerWindow.RenderScaling : 1;
         int inset = (int)Math.Round(PreviewBorderThickness * scale);
