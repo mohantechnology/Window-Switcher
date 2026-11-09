@@ -25,6 +25,11 @@ public class ConfigFile
     public int WindowHeight { get; set; } = FloatingWindowInitialSize.FallbackHeight;
     public string PreviewHighlightColor { get; set; } = "#E3008C";
     public bool EnablePreviews { get; set; } = true;
+
+    /// <summary>
+    /// Font size of the name label at the top of each floating preview.
+    /// </summary>
+    public int FloatingWindowLabelFontSize { get; set; } = FloatingWindowLabelLayout.DefaultFontSize;
     public bool EnablePinFocusedWindow { get; set; } = true;
 
     // Prefix / Blacklist

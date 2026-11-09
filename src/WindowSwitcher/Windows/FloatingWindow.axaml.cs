@@ -28,7 +28,6 @@ namespace WindowSwitcher.Windows;
 public partial class FloatingWindow : Window, IFloatingPreviewWindow
 {
     private const double ResizeGripThickness = 8d;
-    private const int PreviewTitleReservedHeight = 26;
     private const int AttentionPulseStepMilliseconds = 160;
     private const int AttentionPulseStepCount = 6;
     private static readonly ILogger Logger = Log.ForContext<FloatingWindow>();
@@ -79,7 +78,13 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     private int _resizeStartWidth;
     private int _resizeStartHeight;
     private bool _applyingLinkedSize;
+    private int _labelFontSize = FloatingWindowLabelLayout.DefaultFontSize;
+    private MenuItem? _livePreviewMenuItem;
+    private MenuItem? _refreshThumbnailMenuItem;
     private readonly FloatingWindowService _service;
+
+    private int PreviewTitleReservedHeight =>
+        FloatingWindowLabelLayout.TitleBandHeight(_labelFontSize);
     public WindowConfig WindowConfig { get; private set; }
 
     internal FloatingWindow(
@@ -143,6 +148,8 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             DmaBufPreview,
             PreviewBorder
         );
+        _service.SetLabelFontSize(_labelFontSize);
+        FloatingWindowContextMenu.Opening += (_, _) => UpdatePreviewMenuItems();
 
         Show();
         _service.UpdateLayout();
@@ -164,6 +171,9 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
     private void SetInitialWindowSettings()
     {
+        _labelFontSize = FloatingWindowLabelLayout.ClampFontSize(
+            _floatingWindowSettingsService.GetAppearanceSettings().FloatingWindowLabelFontSize
+        );
         WindowConfig? settingsConfig = _floatingWindowSettingsService.GetPersistedConfig(
             WindowConfig
         );
@@ -239,6 +249,18 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
                 Command = new ContextMenuCommand(() => _ = RenameWindowTitleAsync()),
             }
         );
+        _livePreviewMenuItem = new MenuItem
+        {
+            Header = "Disable live preview",
+            Command = new ContextMenuCommand(ToggleLivePreview),
+        };
+        _refreshThumbnailMenuItem = new MenuItem
+        {
+            Header = "Refresh thumbnail",
+            Command = new ContextMenuCommand(RefreshThumbnail),
+        };
+        FloatingWindowContextMenu.Items.Add(_livePreviewMenuItem);
+        FloatingWindowContextMenu.Items.Add(_refreshThumbnailMenuItem);
         if (_floatingWindowHost.CanResetPreviewSelection)
         {
             FloatingWindowContextMenu.Items.Add(new Separator());
@@ -814,7 +836,40 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
     public void ApplySettings()
     {
+        SyncLivePreviewOverride();
         ApplySettingsCore(refreshPreviewPipeline: true);
+    }
+
+    private void SyncLivePreviewOverride()
+    {
+        WindowConfig? persisted = _floatingWindowSettingsService.GetPersistedConfig(WindowConfig);
+        WindowConfig.LivePreviewOverride = persisted?.LivePreviewOverride;
+    }
+
+    private void UpdatePreviewMenuItems()
+    {
+        bool livePreviewEnabled = _service.IsLivePreviewEnabled;
+        if (_livePreviewMenuItem is not null)
+        {
+            _livePreviewMenuItem.Header = livePreviewEnabled
+                ? "Disable live preview"
+                : "Enable live preview";
+        }
+
+        if (_refreshThumbnailMenuItem is not null)
+            _refreshThumbnailMenuItem.IsEnabled = !livePreviewEnabled;
+    }
+
+    private void ToggleLivePreview()
+    {
+        WindowConfig.LivePreviewOverride = !_service.IsLivePreviewEnabled;
+        _floatingWindowSettingsService.Save(WindowConfig);
+        _service.ApplySettings();
+    }
+
+    private void RefreshThumbnail()
+    {
+        _service.RefreshFrozenThumbnail();
     }
 
     public void ApplyDefaultPreviewOpacity(double opacity)
@@ -845,6 +900,12 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     {
         FloatingWindowAppearanceSettings configSnapshot =
             _floatingWindowSettingsService.GetAppearanceSettings();
+        _labelFontSize = FloatingWindowLabelLayout.ClampFontSize(
+            configSnapshot.FloatingWindowLabelFontSize
+        );
+        WindowLabel.FontSize = _labelFontSize;
+        if (syncServiceOpacity || refreshPreviewPipeline)
+            _service.SetLabelFontSize(_labelFontSize);
 
         CanResize = configSnapshot.ResizeWindows;
         if (configSnapshot.UseFixedWindowSize)

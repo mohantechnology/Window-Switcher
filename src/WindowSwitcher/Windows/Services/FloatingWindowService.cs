@@ -19,8 +19,6 @@ namespace WindowSwitcher.Windows.Services;
 
 internal sealed class FloatingWindowService
 {
-    // Leave room for the hover close button chrome above the native DWM thumbnail.
-    private const double TitleReservedHeight = 26;
     private const double PreviewBorderThickness = 2;
     private const int PreviewRequestTimeoutMs = 1_500;
     private const int ResizePreviewRefreshDebounceMs = 250;
@@ -40,6 +38,7 @@ internal sealed class FloatingWindowService
     private readonly SemaphoreSlim _previewUpdateSemaphore = new(1, 1);
     private readonly Lock _pendingFrameSync = new();
     private readonly Lock _resizePreviewRefreshSync = new();
+    private readonly Lock _frozenCaptureSync = new();
     private CancellationTokenSource? _previewOperationCancellation = new();
     private CancellationTokenSource? _resizePreviewRefreshCancellation;
     private PreviewFrame? _pendingFrame;
@@ -58,6 +57,10 @@ internal sealed class FloatingWindowService
     private bool _showingFrozenPreview;
     private bool _frozenSnapshotReady;
     private bool _resizePreviewRefreshPending;
+    private int _frozenCaptureGeneration;
+    private double _titleReservedHeight = FloatingWindowLabelLayout.TitleBandHeight(
+        FloatingWindowLabelLayout.DefaultFontSize
+    );
 
     public FloatingWindowService(
         Window ownerWindow,
@@ -127,9 +130,33 @@ internal sealed class FloatingWindowService
         _ = opacity; // retained for call-site compatibility; window alpha owns translucency
     }
 
+    public bool IsLivePreviewEnabled => IsPreviewCaptureEnabled();
+
+    public void SetLabelFontSize(int fontSize)
+    {
+        _titleReservedHeight = FloatingWindowLabelLayout.TitleBandHeight(fontSize);
+    }
+
+    public void RefreshFrozenThumbnail()
+    {
+        if (_isClosing || IsPreviewCaptureEnabled())
+            return;
+
+        InvalidateFrozenCapture();
+        if (_floatingPreviewPolicy.UseNativeThumbnailPreview)
+        {
+            FreezeNativeThumbnailPreview();
+            return;
+        }
+
+        // The Linux preview loop is waiting on a frozen still. Cancel that wait so it
+        // captures one new frame for this window only.
+        CancelPreviewOperations(recreateTokenSource: true);
+    }
+
     public void UpdateLayout()
     {
-        double topOffset = TitleReservedHeight;
+        double topOffset = _titleReservedHeight;
         double previewWidth = RoundToPixel(Math.Max(0, _ownerWindow.Width));
         double previewHeight = RoundToPixel(Math.Max(0, _ownerWindow.Height - topOffset));
         double left = RoundToPixel(0);
@@ -176,7 +203,7 @@ internal sealed class FloatingWindowService
         DisposeFrozenPreviewBitmap();
         DisposeStreamBitmaps();
         _showingFrozenPreview = false;
-        _frozenSnapshotReady = false;
+        SetFrozenSnapshotReady(false);
     }
 
     public void ApplySettings()
@@ -202,12 +229,12 @@ internal sealed class FloatingWindowService
             if (_floatingPreviewPolicy.UseNativeThumbnailPreview)
                 FreezeNativeThumbnailPreview();
             else
-                _frozenSnapshotReady = true;
+                SetFrozenSnapshotReady(true);
             return;
         }
 
         _previewCaptureSuspendedWhileDisabled = false;
-        _frozenSnapshotReady = false;
+        SetFrozenSnapshotReady(false);
         ClearFrozenPreview();
         if (_floatingPreviewPolicy.UseNativeThumbnailPreview)
             RegisterWindowThumbnail();
@@ -251,7 +278,7 @@ internal sealed class FloatingWindowService
                 }
 
                 _previewCaptureSuspendedWhileDisabled = false;
-                _frozenSnapshotReady = false;
+                SetFrozenSnapshotReady(false);
 
                 ScreenshotRequest request = CreateCaptureRequest();
                 await foreach (
@@ -265,11 +292,14 @@ internal sealed class FloatingWindowService
                     if (!IsPreviewCaptureEnabled())
                     {
                         // Keep this last frame as the frozen snapshot when previews are turned off.
+                        // A refresh requested while this frame was in flight must not accept it.
+                        int generation = ReadFrozenCaptureGeneration();
                         await ApplyFrameAsync(frame, operationToken, forceApply: true)
                             .ConfigureAwait(false);
-                        _frozenSnapshotReady = true;
+                        CompleteFrozenCapture(generation);
                         break;
                     }
+
                     QueueLatestFrame(frame, operationToken);
                 }
 
@@ -449,7 +479,7 @@ internal sealed class FloatingWindowService
 
     private async Task EnsureDisabledSnapshotAsync(CancellationToken cancellationToken)
     {
-        if (_frozenSnapshotReady)
+        if (!TryClaimDisabledSnapshot(out int generation))
         {
             DisposePendingFrame();
             if (!_previewCaptureSuspendedWhileDisabled)
@@ -472,9 +502,16 @@ internal sealed class FloatingWindowService
                 )
             )
             {
+                if (!IsFrozenCaptureCurrent(generation))
+                {
+                    frame.Dispose();
+                    return;
+                }
+
                 await ApplyFrameAsync(frame, cancellationToken, forceApply: true)
                     .ConfigureAwait(false);
-                _frozenSnapshotReady = true;
+                if (!CompleteFrozenCapture(generation))
+                    return;
                 break;
             }
         }
@@ -487,7 +524,7 @@ internal sealed class FloatingWindowService
 
     private void FreezeNativeThumbnailPreview()
     {
-        if (_frozenSnapshotReady && _showingFrozenPreview)
+        if (!NeedsNativeStill(out int generation))
         {
             UnregisterWindowThumbnail();
             return;
@@ -496,6 +533,7 @@ internal sealed class FloatingWindowService
         if (!long.TryParse(_windowConfig.WindowId, out long sourceHandle))
         {
             UnregisterWindowThumbnail();
+            RestoreFrozenPreviewLayout();
             return;
         }
 
@@ -508,15 +546,32 @@ internal sealed class FloatingWindowService
         );
         UnregisterWindowThumbnail();
         if (!captured || stillImage is null)
+        {
+            RestoreFrozenPreviewLayout();
             return;
+        }
 
         try
         {
-            Dispatcher.UIThread.Invoke(() => ApplyFrozenStillImage(stillImage));
-            _frozenSnapshotReady = true;
+            // Drop a capture that a newer refresh already superseded.
+            if (!IsFrozenCaptureCurrent(generation))
+            {
+                RestoreFrozenPreviewLayout();
+                return;
+            }
+
+            Dispatcher.UIThread.Invoke(() =>
+            {
+                if (!IsFrozenCaptureCurrent(generation))
+                    return;
+                ApplyFrozenStillImage(stillImage);
+            });
+            if (!CompleteFrozenCapture(generation))
+                return;
         }
         catch (Exception exception)
         {
+            RestoreFrozenPreviewLayout();
             Logger.Error(exception, "Applying frozen preview image failed");
         }
     }
@@ -567,7 +622,7 @@ internal sealed class FloatingWindowService
 
         DisposeFrozenPreviewBitmap();
         _showingFrozenPreview = false;
-        _frozenSnapshotReady = false;
+        SetFrozenSnapshotReady(false);
     }
 
     private void DisposeFrozenPreviewBitmap()
@@ -745,8 +800,78 @@ internal sealed class FloatingWindowService
 
     private bool IsPreviewCaptureEnabled() => Volatile.Read(ref _previewCaptureEnabled) != 0;
 
-    private static bool ReadPreviewCaptureEnabled() =>
-        ConfigFileAccessor.GetInstance().ReadConfig(config => config.EnablePreviews);
+    private bool ReadPreviewCaptureEnabled() =>
+        FloatingPreviewPreference.IsEnabled(
+            _windowConfig.LivePreviewOverride,
+            ConfigFileAccessor.GetInstance().ReadConfig(config => config.EnablePreviews)
+        );
+
+    private bool TryClaimDisabledSnapshot(out int generation)
+    {
+        lock (_frozenCaptureSync)
+        {
+            generation = _frozenCaptureGeneration;
+            return !_frozenSnapshotReady;
+        }
+    }
+
+    private bool NeedsNativeStill(out int generation)
+    {
+        lock (_frozenCaptureSync)
+        {
+            generation = _frozenCaptureGeneration;
+            return !(_frozenSnapshotReady && _showingFrozenPreview);
+        }
+    }
+
+    private int ReadFrozenCaptureGeneration()
+    {
+        lock (_frozenCaptureSync)
+            return _frozenCaptureGeneration;
+    }
+
+    private bool IsFrozenCaptureCurrent(int generation)
+    {
+        lock (_frozenCaptureSync)
+            return generation == _frozenCaptureGeneration;
+    }
+
+    private void InvalidateFrozenCapture()
+    {
+        lock (_frozenCaptureSync)
+        {
+            _frozenCaptureGeneration++;
+            _frozenSnapshotReady = false;
+            _showingFrozenPreview = false;
+        }
+    }
+
+    private bool CompleteFrozenCapture(int generation)
+    {
+        lock (_frozenCaptureSync)
+        {
+            if (generation != _frozenCaptureGeneration)
+                return false;
+
+            _frozenSnapshotReady = true;
+            return true;
+        }
+    }
+
+    private void SetFrozenSnapshotReady(bool ready)
+    {
+        lock (_frozenCaptureSync)
+            _frozenSnapshotReady = ready;
+    }
+
+    private void RestoreFrozenPreviewLayout()
+    {
+        lock (_frozenCaptureSync)
+        {
+            if (_frozenPreviewBitmap is not null)
+                _showingFrozenPreview = true;
+        }
+    }
 
     private void RegisterWindowThumbnail()
     {
@@ -757,7 +882,7 @@ internal sealed class FloatingWindowService
 
         double scale = _ownerWindow.RenderScaling > 0 ? _ownerWindow.RenderScaling : 1;
         int inset = (int)Math.Round(PreviewBorderThickness * scale);
-        int top = (int)Math.Round(TitleReservedHeight * scale) + inset;
+        int top = (int)Math.Round(_titleReservedHeight * scale) + inset;
         int destinationRight = Math.Max(
             inset + 1,
             (int)Math.Round(_ownerWindow.Width * scale) - inset

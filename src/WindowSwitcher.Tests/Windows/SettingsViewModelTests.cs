@@ -38,6 +38,47 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void EnablePreviews_ClearsPerWindowOverridesAndAppliesOnce()
+    {
+        var repository = new FakeSettingsRepository();
+        repository.Config.EnablePreviews = true;
+        repository.Config.FloatingWindowsConfig.Add(
+            new WindowConfig { WindowTitle = "Editor", LivePreviewOverride = false }
+        );
+        repository.Config.FloatingWindowsConfig.Add(
+            new WindowConfig { WindowTitle = "Terminal", LivePreviewOverride = true }
+        );
+        int applyActionInvocationCount = 0;
+        var sut = CreateSut(repository, applyAction: () => applyActionInvocationCount++);
+
+        sut.EnablePreviews = false;
+
+        Assert.False(repository.Config.EnablePreviews);
+        Assert.All(
+            repository.Config.FloatingWindowsConfig,
+            windowConfig => Assert.Null(windowConfig!.LivePreviewOverride)
+        );
+        Assert.Equal(1, applyActionInvocationCount);
+    }
+
+    [Fact]
+    public void EnablePreviews_SameValue_LeavesOverridesAndDoesNotApply()
+    {
+        var repository = new FakeSettingsRepository();
+        repository.Config.EnablePreviews = true;
+        repository.Config.FloatingWindowsConfig.Add(
+            new WindowConfig { WindowTitle = "Editor", LivePreviewOverride = false }
+        );
+        int applyActionInvocationCount = 0;
+        var sut = CreateSut(repository, applyAction: () => applyActionInvocationCount++);
+
+        sut.EnablePreviews = true;
+
+        Assert.False(repository.Config.FloatingWindowsConfig[0]!.LivePreviewOverride);
+        Assert.Equal(0, applyActionInvocationCount);
+    }
+
+    [Fact]
     public void EnablePinFocusedWindow_DefaultsToTrueAndPersistsChanges()
     {
         var repository = new FakeSettingsRepository();
@@ -201,6 +242,34 @@ public sealed class SettingsViewModelTests
 
         sut.PreviewFrameRate = -3;
         Assert.Equal(0, repository.Config.PreviewFrameRate);
+    }
+
+    [Fact]
+    public void FloatingWindowLabelFontSize_DefaultsToTenAndPersistsChanges()
+    {
+        var repository = new FakeSettingsRepository();
+        int applyActionInvocationCount = 0;
+        var sut = CreateSut(repository, applyAction: () => applyActionInvocationCount++);
+
+        Assert.Equal(10, sut.FloatingWindowLabelFontSize);
+
+        sut.FloatingWindowLabelFontSize = 16;
+
+        Assert.Equal(16, repository.Config.FloatingWindowLabelFontSize);
+        Assert.Equal(1, applyActionInvocationCount);
+    }
+
+    [Fact]
+    public void FloatingWindowLabelFontSize_ClampsToSupportedRange()
+    {
+        var repository = new FakeSettingsRepository();
+        var sut = CreateSut(repository);
+
+        sut.FloatingWindowLabelFontSize = 99;
+        Assert.Equal(32, repository.Config.FloatingWindowLabelFontSize);
+
+        sut.FloatingWindowLabelFontSize = 1;
+        Assert.Equal(8, repository.Config.FloatingWindowLabelFontSize);
     }
 
     [Fact]

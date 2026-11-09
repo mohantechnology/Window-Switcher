@@ -543,6 +543,9 @@ public class ConfigFileAccessor
         );
         config.PreviewFrameRate = PreviewFrameTiming.Clamp(config.PreviewFrameRate);
         PreviewFrameTiming.SetFramesPerSecond(config.PreviewFrameRate);
+        config.FloatingWindowLabelFontSize = FloatingWindowLabelLayout.ClampFontSize(
+            config.FloatingWindowLabelFontSize
+        );
 
         config.FloatingWindowsConfig = (config.FloatingWindowsConfig ?? [])
             .Where(windowConfig => windowConfig is not null)
@@ -700,6 +703,7 @@ public class ConfigFileAccessor
             WindowHeight = config.WindowHeight,
             PreviewHighlightColor = config.PreviewHighlightColor,
             EnablePreviews = config.EnablePreviews,
+            FloatingWindowLabelFontSize = config.FloatingWindowLabelFontSize,
             EnablePinFocusedWindow = config.EnablePinFocusedWindow,
             WhitelistPrefixes = config.WhitelistPrefixes.ToList(),
             BlacklistPrefixes = config.BlacklistPrefixes.ToList(),

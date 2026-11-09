@@ -31,7 +31,8 @@ internal sealed record FloatingWindowAppearanceSettings(
     int WindowHeight,
     string PreviewHighlightColor,
     double DefaultPreviewOpacity,
-    int PreviewFrameRate
+    int PreviewFrameRate,
+    int FloatingWindowLabelFontSize
 );
 
 internal sealed class ConfigFileFloatingWindowSettingsService : IFloatingWindowSettingsService
@@ -68,7 +69,8 @@ internal sealed class ConfigFileFloatingWindowSettingsService : IFloatingWindowS
                 config.WindowHeight,
                 config.PreviewHighlightColor,
                 config.DefaultPreviewOpacity,
-                config.PreviewFrameRate
+                config.PreviewFrameRate,
+                config.FloatingWindowLabelFontSize
             ));
     }
 

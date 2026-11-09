@@ -45,6 +45,7 @@ public sealed class ConfigFileAccessorTests
             Assert.True(sut.Config.ChangeOpacityOnHover);
             Assert.Equal(1.0, sut.Config.DefaultPreviewOpacity);
             Assert.Equal(1, sut.Config.PreviewFrameRate);
+            Assert.Equal(10, sut.Config.FloatingWindowLabelFontSize);
             Assert.Equal(new ConfigFile().SentryDsn, sut.Config.SentryDsn);
             Assert.True(Guid.TryParse(sut.Config.TelemetryInstallationId, out _));
 
@@ -567,6 +568,65 @@ public sealed class ConfigFileAccessorTests
 
             var reloaded = CreateAccessor(dataFolder);
             Assert.False(reloaded.Config.UseDefaultWindowSize);
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void FloatingWindowLabelFontSize_DefaultsToTen_ClampsAndRoundTrips()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            File.WriteAllText(Path.Combine(dataFolder, "config.json"), "{ }");
+            var sut = CreateAccessor(dataFolder);
+            Assert.Equal(10, sut.ReadConfig(config => config.FloatingWindowLabelFontSize));
+
+            sut.UpdateConfig(config => config.FloatingWindowLabelFontSize = 18);
+            Assert.Equal(18, sut.ReadConfig(config => config.FloatingWindowLabelFontSize));
+
+            sut.UpdateConfig(config => config.FloatingWindowLabelFontSize = 100);
+            Assert.Equal(32, sut.ReadConfig(config => config.FloatingWindowLabelFontSize));
+
+            sut.UpdateConfig(config => config.FloatingWindowLabelFontSize = 1);
+            Assert.Equal(8, sut.Config.FloatingWindowLabelFontSize);
+
+            var reloaded = CreateAccessor(dataFolder);
+            Assert.Equal(8, reloaded.Config.FloatingWindowLabelFontSize);
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void LivePreviewOverride_RoundTripsWithFloatingWindowSettings()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            var sut = CreateAccessor(dataFolder);
+            sut.SaveFloatingWindowSettings(
+                new WindowConfig
+                {
+                    WindowId = "window-1",
+                    ProcessName = "Proc",
+                    WindowTitle = "Editor",
+                    LivePreviewOverride = false,
+                }
+            );
+
+            var reloaded = CreateAccessor(dataFolder);
+            WindowConfig? resolved = reloaded.GetFloatingWindowConfig(
+                new WindowConfig { ProcessName = "Proc", WindowTitle = "Editor" }
+            );
+
+            Assert.NotNull(resolved);
+            Assert.False(resolved!.LivePreviewOverride);
         }
         finally
         {

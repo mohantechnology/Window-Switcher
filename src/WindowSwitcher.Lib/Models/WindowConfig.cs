@@ -96,6 +96,22 @@ public class WindowConfig : INotifyPropertyChanged
         }
     } = 1.0;
 
+    /// <summary>
+    /// Per-window live preview choice. <see langword="null"/> follows the global setting.
+    /// Changing the global Enable previews setting clears this override.
+    /// </summary>
+    public bool? LivePreviewOverride
+    {
+        get;
+        set
+        {
+            if (field == value)
+                return;
+            field = value;
+            OnPropertyChanged();
+        }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)

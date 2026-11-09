@@ -48,14 +48,31 @@ public class SettingsViewModel : ObservableObject
     public bool EnablePreviews
     {
         get => ReadSetting(config => config.EnablePreviews);
-        set =>
-            UpdateSetting(
-                nameof(EnablePreviews),
-                value,
-                config => config.EnablePreviews,
-                (config, currentValue) => config.EnablePreviews = currentValue,
-                applyToWindows: true
-            );
+        set
+        {
+            bool updated = false;
+            _settingsRepository.Update(config =>
+            {
+                if (config.EnablePreviews == value)
+                    return;
+
+                config.EnablePreviews = value;
+                foreach (WindowConfig? windowConfig in config.FloatingWindowsConfig)
+                {
+                    if (windowConfig is null)
+                        continue;
+                    windowConfig.LivePreviewOverride = null;
+                }
+
+                updated = true;
+            });
+
+            if (!updated)
+                return;
+
+            OnPropertyChanged();
+            _applyAction();
+        }
     }
 
     public bool EnablePinFocusedWindow
@@ -222,6 +239,19 @@ public class SettingsViewModel : ObservableObject
                 Math.Clamp(value, min: 0, max: 30),
                 config => config.PreviewFrameRate,
                 (config, currentValue) => config.PreviewFrameRate = currentValue,
+                applyToWindows: true
+            );
+    }
+
+    public int FloatingWindowLabelFontSize
+    {
+        get => ReadSetting(config => config.FloatingWindowLabelFontSize);
+        set =>
+            UpdateSetting(
+                nameof(FloatingWindowLabelFontSize),
+                FloatingWindowLabelLayout.ClampFontSize(value),
+                config => config.FloatingWindowLabelFontSize,
+                (config, currentValue) => config.FloatingWindowLabelFontSize = currentValue,
                 applyToWindows: true
             );
     }
