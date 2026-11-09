@@ -33,7 +33,10 @@
                                 <ContextMenu Name="FloatingWindowContextMenu"></ContextMenu>
                         </Canvas.ContextMenu>
                         <controls:DmaBufPreviewControl Name="DmaBufPreview" IsHitTestVisible="False" />
-                        <Image Name="WindowScreenshot" Stretch="Fill" IsHitTestVisible="False" />
+                        <Image Name="WindowScreenshot"
+                               Stretch="Fill"
+                               IsHitTestVisible="False"
+                               RenderOptions.BitmapInterpolationMode="HighQuality" />
                         <Border Name="PreviewBorder" BorderThickness="2" Background="Transparent"
                                 IsVisible="False" IsHitTestVisible="False" />
                         <Label FontSize="10" Margin="2 0" Padding="0" Foreground="{StaticResource FloatingWindowLabelBrush}" FontWeight="Bold" Name="WindowLabel"><TextBlock>window name</TextBlock></Label>

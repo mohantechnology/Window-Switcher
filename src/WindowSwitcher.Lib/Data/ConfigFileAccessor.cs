@@ -690,6 +690,7 @@ public class ConfigFileAccessor
             TelemetryInstallationId = config.TelemetryInstallationId,
             UseFixedWindowSize = config.UseFixedWindowSize,
             UseDefaultWindowSize = config.UseDefaultWindowSize,
+            LinkPreviewAspectRatio = config.LinkPreviewAspectRatio,
             FocusOnHover = config.FocusOnHover,
             ChangeSizeOnHover = config.ChangeSizeOnHover,
             ChangeOpacityOnHover = config.ChangeOpacityOnHover,

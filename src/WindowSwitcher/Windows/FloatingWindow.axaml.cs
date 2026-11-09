@@ -28,6 +28,7 @@ namespace WindowSwitcher.Windows;
 public partial class FloatingWindow : Window, IFloatingPreviewWindow
 {
     private const double ResizeGripThickness = 8d;
+    private const int PreviewTitleReservedHeight = 26;
     private const int AttentionPulseStepMilliseconds = 160;
     private const int AttentionPulseStepCount = 6;
     private static readonly ILogger Logger = Log.ForContext<FloatingWindow>();
@@ -72,6 +73,12 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
     private readonly IWindowKeybindManager _windowKeybindManager;
     private readonly IMetaKeyStateReader _metaKeyStateReader;
     private readonly IFloatingWindowHandleConfigurator _floatingWindowHandleConfigurator;
+    private readonly IWindowFrameSizeReader _windowFrameSizeReader;
+    private double _sourceAspectRatio;
+    private WindowEdge? _activeResizeEdge;
+    private int _resizeStartWidth;
+    private int _resizeStartHeight;
+    private bool _applyingLinkedSize;
     private readonly FloatingWindowService _service;
     public WindowConfig WindowConfig { get; private set; }
 
@@ -106,6 +113,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             AppServiceProvider.GetRequiredService<IWindowStillImageCapture>();
         _floatingWindowHandleConfigurator =
             AppServiceProvider.GetRequiredService<IFloatingWindowHandleConfigurator>();
+        _windowFrameSizeReader = AppServiceProvider.GetRequiredService<IWindowFrameSizeReader>();
 
         _closeOverlay = new FloatingCloseOverlayWindow(_floatingWindowHandleConfigurator);
         _closeOverlay.CloseRequested += (_, _) =>
@@ -169,6 +177,7 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             Position = new PixelPoint(WindowConfig.WindowLeft, WindowConfig.WindowTop);
         }
 
+        _sourceAspectRatio = ReadSourceAspect();
         if (!hasPersistedLayout)
         {
             FloatingWindowAppearanceSettings appearance =
@@ -183,6 +192,15 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
                 configuredWidth: appearance.WindowWidth,
                 configuredHeight: appearance.WindowHeight
             );
+            if (appearance.LinkPreviewAspectRatio && _sourceAspectRatio > 0)
+            {
+                (width, height) = LinkedPreviewSize.FitWidth(
+                    width,
+                    _sourceAspectRatio,
+                    PreviewTitleReservedHeight
+                );
+            }
+
             WindowConfig.WindowWidth = width;
             WindowConfig.WindowHeight = height;
         }
@@ -280,7 +298,11 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
             return false;
 
         _leftGestureResizeStarted = true;
+        _resizeStartWidth = (int)Math.Round(Width);
+        _resizeStartHeight = (int)Math.Round(Height);
+        _activeResizeEdge = resizeEdge;
         BeginResizeDrag(resizeEdge.Value, e);
+        _activeResizeEdge = null;
         return true;
     }
 
@@ -523,11 +545,17 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
 
     private void ApplyHoverSizeChange(bool increase)
     {
-        (int nextWidth, int nextHeight) = FloatingPreviewHoverAdjustment.ScaleSize(
-            (int)Math.Max(1, Width),
-            (int)Math.Max(1, Height),
-            increase
-        );
+        int currentWidth = (int)Math.Max(1, Width);
+        int currentHeight = (int)Math.Max(1, Height);
+        (int nextWidth, int nextHeight) = LinksPreviewAspect()
+            ? LinkedPreviewSize.Scale(
+                currentWidth,
+                currentHeight,
+                increase,
+                CurrentAspectRatio(currentWidth, currentHeight),
+                PreviewTitleReservedHeight
+            )
+            : FloatingPreviewHoverAdjustment.ScaleSize(currentWidth, currentHeight, increase);
 
         if (nextWidth == (int)Width && nextHeight == (int)Height)
             return;
@@ -619,8 +647,70 @@ public partial class FloatingWindow : Window, IFloatingPreviewWindow
         UpdateResizeCursor(e);
     }
 
+    private double ReadSourceAspect()
+    {
+        if (
+            !_windowFrameSizeReader.TryGetFrameSize(
+                WindowConfig.WindowId,
+                out int width,
+                out int height
+            )
+        )
+            return 0;
+
+        return LinkedPreviewSize.TryAspect(width, height, out double aspect) ? aspect : 0;
+    }
+
+    private bool LinksPreviewAspect() =>
+        _floatingWindowSettingsService.GetAppearanceSettings().LinkPreviewAspectRatio;
+
+    private double CurrentAspectRatio(int width, int height)
+    {
+        if (_sourceAspectRatio > 0)
+            return _sourceAspectRatio;
+
+        int contentHeight = Math.Max(1, height - PreviewTitleReservedHeight);
+        return LinkedPreviewSize.TryAspect(width, contentHeight, out double aspect) ? aspect : 1;
+    }
+
+    private bool WidthDrivesResize(WindowEdge edge)
+    {
+        bool horizontal = edge is WindowEdge.East or WindowEdge.West;
+        bool vertical = edge is WindowEdge.North or WindowEdge.South;
+        if (horizontal && !vertical)
+            return true;
+        if (vertical && !horizontal)
+            return false;
+
+        int widthDelta = Math.Abs((int)Math.Round(Width) - _resizeStartWidth);
+        int heightDelta = Math.Abs((int)Math.Round(Height) - _resizeStartHeight);
+        return widthDelta >= heightDelta;
+    }
+
     private void FloatingWindowResized(object? sender, WindowResizedEventArgs e)
     {
+        if (!_applyingLinkedSize && _activeResizeEdge is WindowEdge edge && LinksPreviewAspect())
+        {
+            bool widthDrives = WidthDrivesResize(edge);
+            (int linkedWidth, int linkedHeight) = LinkedPreviewSize.Preserve(
+                (int)Math.Round(Width),
+                (int)Math.Round(Height),
+                CurrentAspectRatio(_resizeStartWidth, _resizeStartHeight),
+                widthDrives,
+                PreviewTitleReservedHeight
+            );
+            if (
+                linkedWidth != (int)Math.Round(Width)
+                || linkedHeight != (int)Math.Round(Height)
+            )
+            {
+                _applyingLinkedSize = true;
+                Width = linkedWidth;
+                Height = linkedHeight;
+                _applyingLinkedSize = false;
+            }
+        }
+
         WindowConfig.WindowHeight = (Int32)Height;
         WindowConfig.WindowWidth = (Int32)Width;
         _service.OnWindowResized();

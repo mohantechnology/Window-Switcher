@@ -253,11 +253,7 @@ internal sealed class FloatingWindowService
                 _previewCaptureSuspendedWhileDisabled = false;
                 _frozenSnapshotReady = false;
 
-                var request = new ScreenshotRequest(
-                    MaxWidthPx: PositiveOrNull(Volatile.Read(ref _targetScreenshotWidthPx)),
-                    MaxHeightPx: PositiveOrNull(Volatile.Read(ref _targetScreenshotHeightPx)),
-                    TimeoutMs: PreviewRequestTimeoutMs
-                );
+                ScreenshotRequest request = CreateCaptureRequest();
                 await foreach (
                     PreviewFrame frame in _previewFrameProvider.StreamAsync(
                         _windowConfig.WindowId,
@@ -294,8 +290,6 @@ internal sealed class FloatingWindowService
             }
         }
     }
-
-    private static int? PositiveOrNull(int value) => value > 0 ? value : null;
 
     private async Task ConfigureGpuFrameSupportAsync(CancellationToken cancellationToken)
     {
@@ -466,11 +460,7 @@ internal sealed class FloatingWindowService
             return;
         }
 
-        var request = new ScreenshotRequest(
-            MaxWidthPx: PositiveOrNull(Volatile.Read(ref _targetScreenshotWidthPx)),
-            MaxHeightPx: PositiveOrNull(Volatile.Read(ref _targetScreenshotHeightPx)),
-            TimeoutMs: PreviewRequestTimeoutMs
-        );
+        ScreenshotRequest request = CreateCaptureRequest();
 
         try
         {
@@ -509,10 +499,11 @@ internal sealed class FloatingWindowService
             return;
         }
 
+        (int captureWidth, int captureHeight) = CurrentCaptureSize();
         bool captured = _windowStillImageCapture.TryCapture(
             new IntPtr(sourceHandle),
-            PositiveOrNull(Volatile.Read(ref _targetScreenshotWidthPx)),
-            PositiveOrNull(Volatile.Read(ref _targetScreenshotHeightPx)),
+            captureWidth,
+            captureHeight,
             out WindowStillImage? stillImage
         );
         UnregisterWindowThumbnail();
@@ -734,6 +725,24 @@ internal sealed class FloatingWindowService
         }
     }
 
+    private ScreenshotRequest CreateCaptureRequest()
+    {
+        (int width, int height) = CurrentCaptureSize();
+        return new ScreenshotRequest(
+            MaxWidthPx: width,
+            MaxHeightPx: height,
+            TimeoutMs: PreviewRequestTimeoutMs
+        );
+    }
+
+    private (int Width, int Height) CurrentCaptureSize()
+    {
+        return PreviewCaptureSize.AtLeastFullHd(
+            Math.Max(1, Volatile.Read(ref _targetScreenshotWidthPx)),
+            Math.Max(1, Volatile.Read(ref _targetScreenshotHeightPx))
+        );
+    }
+
     private bool IsPreviewCaptureEnabled() => Volatile.Read(ref _previewCaptureEnabled) != 0;
 
     private static bool ReadPreviewCaptureEnabled() =>
@@ -746,14 +755,18 @@ internal sealed class FloatingWindowService
         if (platformHandle is null || !long.TryParse(_windowConfig.WindowId, out long sourceHandle))
             return;
 
-        double scale = _ownerWindow.Screens.Primary?.Scaling ?? 1;
+        double scale = _ownerWindow.RenderScaling > 0 ? _ownerWindow.RenderScaling : 1;
         int inset = (int)Math.Round(PreviewBorderThickness * scale);
-        var bounds = new NativeThumbnailBounds(
-            inset,
-            (int)(TitleReservedHeight * scale) + inset,
-            (int)(_windowConfig.WindowWidth * scale) - inset,
-            (int)(_windowConfig.WindowHeight * scale) - inset
+        int top = (int)Math.Round(TitleReservedHeight * scale) + inset;
+        int destinationRight = Math.Max(
+            inset + 1,
+            (int)Math.Round(_ownerWindow.Width * scale) - inset
         );
+        int destinationBottom = Math.Max(
+            top + 1,
+            (int)Math.Round(_ownerWindow.Height * scale) - inset
+        );
+        var bounds = new NativeThumbnailBounds(inset, top, destinationRight, destinationBottom);
         // Window.Opacity on FloatingWindow provides translucency; keep DWM thumbnail solid.
         byte opacity = FloatingPreviewHoverAdjustment.ToByteOpacity(
             FloatingPreviewHoverAdjustment.MaxOpacity

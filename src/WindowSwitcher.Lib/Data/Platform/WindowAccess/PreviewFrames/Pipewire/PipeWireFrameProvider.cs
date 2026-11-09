@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Serilog;
 using Tmds.DBus;
+using WindowSwitcher.Lib.Data.Platform;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.Accessors.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Pipewire.Abstractions;
@@ -19,8 +20,8 @@ internal sealed class PipeWireFrameProvider
         IPreviewSelectionReset,
         IPreviewGpuFallback
 {
-    private const int DefaultWidth = 640;
-    private const int DefaultHeight = 360;
+    private const int DefaultWidth = PreviewCaptureSize.MinimumWidth;
+    private const int DefaultHeight = PreviewCaptureSize.MinimumHeight;
     private const int RestartDelayMilliseconds = 300;
     private static readonly TimeSpan SlowStreamTeardownThreshold = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ShutdownStreamTeardownTimeout = TimeSpan.FromSeconds(2);
@@ -249,7 +250,8 @@ internal sealed class PipeWireFrameProvider
         {
             if (_captures.TryGetValue(windowId, out existing))
             {
-                existing.UpdateDimensions(GetWidth(request), GetHeight(request));
+                (int width, int height) = GetFrameSize(request);
+                existing.UpdateDimensions(width, height);
                 return existing;
             }
 
@@ -257,10 +259,11 @@ internal sealed class PipeWireFrameProvider
             {
                 var cancellationSource = new CancellationTokenSource();
                 _creationCancellation[windowId] = cancellationSource;
+                (int width, int height) = GetFrameSize(request);
                 creationTask = CreateAndRegisterCaptureAsync(
                     windowId,
-                    GetWidth(request),
-                    GetHeight(request),
+                    width,
+                    height,
                     cancellationSource.Token
                 );
                 _creationTasks[windowId] = creationTask;
@@ -272,7 +275,8 @@ internal sealed class PipeWireFrameProvider
             CaptureContext? capture = await creationTask
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
-            capture?.UpdateDimensions(GetWidth(request), GetHeight(request));
+            (int width, int height) = GetFrameSize(request);
+            capture?.UpdateDimensions(width, height);
             return capture;
         }
         catch (OperationCanceledException)
@@ -669,14 +673,11 @@ internal sealed class PipeWireFrameProvider
         return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
     }
 
-    private static int GetWidth(ScreenshotRequest request)
+    private static (int Width, int Height) GetFrameSize(ScreenshotRequest request)
     {
-        return request.MaxWidthPx is > 0 ? request.MaxWidthPx.Value : DefaultWidth;
-    }
-
-    private static int GetHeight(ScreenshotRequest request)
-    {
-        return request.MaxHeightPx is > 0 ? request.MaxHeightPx.Value : DefaultHeight;
+        int width = request.MaxWidthPx is > 0 ? request.MaxWidthPx.Value : DefaultWidth;
+        int height = request.MaxHeightPx is > 0 ? request.MaxHeightPx.Value : DefaultHeight;
+        return PreviewCaptureSize.AtLeastFullHd(width, height);
     }
 
     /// <inheritdoc />

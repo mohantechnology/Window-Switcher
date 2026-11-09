@@ -32,13 +32,29 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
         if (result != 0)
             return false;
 
+        int flags =
+            DwmFunctions.DWM_TNP_SOURCECLIENTAREAONLY
+            | DwmFunctions.DWM_TNP_VISIBLE
+            | DwmFunctions.DWM_TNP_OPACITY
+            | DwmFunctions.DWM_TNP_RECTDESTINATION;
+        var source = new DwmFunctions.Rect(0, 0, 0, 0);
+        if (
+            DwmFunctions.DwmQueryThumbnailSourceSize(
+                registeredThumbnailHandle,
+                out DwmFunctions.PSIZE sourceSize
+            ) == 0
+            && sourceSize.x > 0
+            && sourceSize.y > 0
+        )
+        {
+            // Sample the full source frame so the thumbnail is not taken from a small region.
+            flags |= DwmFunctions.DWM_TNP_RECTSOURCE;
+            source = new DwmFunctions.Rect(0, 0, sourceSize.x, sourceSize.y);
+        }
+
         var properties = new DwmFunctions.DWM_THUMBNAIL_PROPERTIES
         {
-            dwFlags =
-                DwmFunctions.DWM_TNP_SOURCECLIENTAREAONLY
-                | DwmFunctions.DWM_TNP_VISIBLE
-                | DwmFunctions.DWM_TNP_OPACITY
-                | DwmFunctions.DWM_TNP_RECTDESTINATION,
+            dwFlags = flags,
             fSourceClientAreaOnly = false,
             fVisible = true,
             opacity = opacity,
@@ -49,6 +65,7 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
                 Right = destinationBounds.Right,
                 Bottom = destinationBounds.Bottom,
             },
+            rcSource = source,
         };
 
         DwmFunctions.DwmUpdateThumbnailProperties(registeredThumbnailHandle, ref properties);

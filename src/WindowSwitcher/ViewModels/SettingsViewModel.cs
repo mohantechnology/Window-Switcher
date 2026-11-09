@@ -262,6 +262,18 @@ public class SettingsViewModel : ObservableObject
         }
     }
 
+    public bool LinkPreviewAspectRatio
+    {
+        get => ReadSetting(config => config.LinkPreviewAspectRatio);
+        set =>
+            UpdateSetting(
+                nameof(LinkPreviewAspectRatio),
+                value,
+                config => config.LinkPreviewAspectRatio,
+                (config, currentValue) => config.LinkPreviewAspectRatio = currentValue
+            );
+    }
+
     public int WindowWidth
     {
         get => ReadSetting(config => config.WindowWidth);

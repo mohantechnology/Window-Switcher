@@ -15,6 +15,7 @@ public class ConfigFile
 
     public bool UseFixedWindowSize { get; set; } = false;
     public bool UseDefaultWindowSize { get; set; } = true;
+    public bool LinkPreviewAspectRatio { get; set; } = true;
     public bool FocusOnHover { get; set; } = false;
     public bool ChangeSizeOnHover { get; set; } = true;
     public bool ChangeOpacityOnHover { get; set; } = true;

@@ -80,6 +80,20 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void LinkPreviewAspectRatio_DefaultsToTrueAndPersists()
+    {
+        var repository = new FakeSettingsRepository();
+        var sut = CreateSut(repository);
+
+        Assert.True(sut.LinkPreviewAspectRatio);
+
+        sut.LinkPreviewAspectRatio = false;
+
+        Assert.False(repository.Config.LinkPreviewAspectRatio);
+        Assert.False(sut.LinkPreviewAspectRatio);
+    }
+
+    [Fact]
     public void UseDefaultWindowSize_DefaultsToTrueAndPersistsWithoutResizingOpenWindows()
     {
         var repository = new FakeSettingsRepository();

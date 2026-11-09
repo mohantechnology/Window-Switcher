@@ -40,6 +40,7 @@ public static class PlatformServiceCollectionExtensions
             services.AddSingleton<IFloatingPreviewPolicy, WindowsFloatingPreviewPolicy>();
             services.AddSingleton<INativeThumbnailRenderer, WindowsDwmNativeThumbnailRenderer>();
             services.AddSingleton<IWindowStillImageCapture, WindowsPrintWindowStillImageCapture>();
+            services.AddSingleton<IWindowFrameSizeReader, WindowsWindowFrameSizeReader>();
             services.AddSingleton<IMetaKeyStateReader, WindowsMetaKeyStateReader>();
             services.AddSingleton<
                 IFloatingWindowHandleConfigurator,
@@ -54,6 +55,7 @@ public static class PlatformServiceCollectionExtensions
             services.AddSingleton<IFloatingPreviewPolicy, LinuxFloatingPreviewPolicy>();
             services.AddSingleton<INativeThumbnailRenderer, NoOpNativeThumbnailRenderer>();
             services.AddSingleton<IWindowStillImageCapture, NoOpWindowStillImageCapture>();
+            services.AddSingleton<IWindowFrameSizeReader, X11WindowFrameSizeReader>();
             services.AddSingleton<IMetaKeyStateReader, AvaloniaFallbackMetaKeyStateReader>();
             services.AddSingleton<
                 IFloatingWindowHandleConfigurator,
