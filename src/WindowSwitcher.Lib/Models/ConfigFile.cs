@@ -8,16 +8,29 @@ public class ConfigFile
     public bool ResizeWindows { get; set; } = true;
     public bool MoveWindows { get; set; } = true;
     public bool StartMinimized { get; set; } = false;
+    public bool AutoStartInBackground { get; set; } = true;
     public string SentryDsn { get; set; } =
         "https://d4530a120abfe1da5f25305d84502c0a@o4511093969584128.ingest.de.sentry.io/4511093982036048";
     public string TelemetryInstallationId { get; set; } = Guid.NewGuid().ToString("D");
 
     public bool UseFixedWindowSize { get; set; } = false;
+    public bool UseDefaultWindowSize { get; set; } = true;
+    public bool LinkPreviewAspectRatio { get; set; } = true;
     public bool FocusOnHover { get; set; } = false;
-    public int WindowWidth { get; set; } = 300;
-    public int WindowHeight { get; set; } = 200;
+    public bool ChangeSizeOnHover { get; set; } = true;
+    public bool ChangeOpacityOnHover { get; set; } = true;
+    public double DefaultPreviewOpacity { get; set; } = 1.0;
+    public int PreviewFrameRate { get; set; } = 1;
+    public int WindowWidth { get; set; } = FloatingWindowInitialSize.FallbackWidth;
+    public int WindowHeight { get; set; } = FloatingWindowInitialSize.FallbackHeight;
     public string PreviewHighlightColor { get; set; } = "#E3008C";
     public bool EnablePreviews { get; set; } = true;
+
+    /// <summary>
+    /// Font size of the name label at the top of each floating preview.
+    /// </summary>
+    public int FloatingWindowLabelFontSize { get; set; } = FloatingWindowLabelLayout.DefaultFontSize;
+    public bool EnablePinFocusedWindow { get; set; } = true;
 
     // Prefix / Blacklist
     public List<string> WhitelistPrefixes { get; set; } = new List<string>();

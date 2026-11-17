@@ -31,10 +31,37 @@ public sealed class PlatformPoliciesTests
             destinationWindowHandle: 1,
             sourceWindowHandle: 2,
             destinationBounds: new NativeThumbnailBounds(0, 0, 100, 100),
+            opacity: 204,
             out nint thumbnailHandle
         );
 
         Assert.False(registered);
         Assert.Equal(0, thumbnailHandle);
+        Assert.False(renderer.TryUpdateOpacity(thumbnailHandle: 1, opacity: 128));
+    }
+
+    [Fact]
+    public void NoOpWindowStillImageCapture_DoesNotCapture()
+    {
+        var capture = new NoOpWindowStillImageCapture();
+
+        bool captured = capture.TryCapture(
+            windowHandle: 1,
+            maxWidthPx: 100,
+            maxHeightPx: 100,
+            out WindowStillImage? image
+        );
+
+        Assert.False(captured);
+        Assert.Null(image);
+    }
+
+    [Theory]
+    [InlineData(0.8, 204)]
+    [InlineData(1.0, 255)]
+    [InlineData(0.2, 51)]
+    public void ToByteOpacity_MapsNormalizedOpacity(double opacity, byte expected)
+    {
+        Assert.Equal(expected, WindowSwitcher.Lib.Data.Platform.FloatingPreviewHoverAdjustment.ToByteOpacity(opacity));
     }
 }

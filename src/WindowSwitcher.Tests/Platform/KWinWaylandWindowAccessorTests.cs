@@ -188,6 +188,38 @@ public sealed class KWinWaylandWindowAccessorTests
         Assert.False(await sut.TryActivateWindowAsync($"kwin:{NativeId:D}"));
     }
 
+    [Fact]
+    public async Task TryGetForegroundWindowIdAsync_ReturnsNativeWindowId()
+    {
+        var client = new FakeKWinScriptingClient
+        {
+            WatcherSnapshot = Snapshot(Window(NativeId, "Calculator", 0)),
+            ForegroundWindowId = KWinScripts.FormatWindowId(NativeId),
+        };
+        await using KWinWaylandWindowAccessor sut = CreateSut(client, out _);
+
+        string? windowId = await sut.TryGetForegroundWindowIdAsync();
+
+        Assert.Equal($"kwin:{NativeId:D}", windowId);
+        Assert.Contains(
+            client.LoadedPlugins,
+            name => name.StartsWith("windowswitcher_foreground_", StringComparison.Ordinal)
+        );
+    }
+
+    [Fact]
+    public async Task TryGetForegroundWindowIdAsync_ReturnsNullWhenActiveWindowIsEmpty()
+    {
+        var client = new FakeKWinScriptingClient
+        {
+            WatcherSnapshot = Snapshot(),
+            ForegroundWindowId = string.Empty,
+        };
+        await using KWinWaylandWindowAccessor sut = CreateSut(client, out _);
+
+        Assert.Null(await sut.TryGetForegroundWindowIdAsync());
+    }
+
     [Theory]
     [InlineData("0x01e00007")]
     [InlineData("kwin:")]
@@ -257,13 +289,16 @@ public sealed class KWinWaylandWindowAccessorTests
 
         string watcher = KWinScripts.BuildWatcher(hostileBusName);
         string activation = KWinScripts.BuildActivation(hostileBusName, NativeId, "request");
+        string foreground = KWinScripts.BuildForegroundQuery(hostileBusName, "request");
 
         string encoded = JsonConvert.ToString(hostileBusName);
         Assert.Contains($"const busName = {encoded};", watcher);
         Assert.Contains($"callDBus({encoded},", activation);
+        Assert.Contains($"callDBus({encoded},", foreground);
         Assert.Contains("\"{f66232b1-8542-48ef-8c53-a8151f0bc453}\"", activation);
         Assert.DoesNotContain("__", watcher);
         Assert.DoesNotContain("__", activation);
+        Assert.DoesNotContain("__", foreground);
     }
 
     private static KWinWaylandWindowAccessor CreateSut(
@@ -309,6 +344,7 @@ public sealed class KWinWaylandWindowAccessorTests
         public string? BusName { get; init; } = ":1.42";
         public string? WatcherSnapshot { get; init; }
         public bool ActivationResult { get; init; }
+        public string? ForegroundWindowId { get; init; }
         public int ConnectCalls { get; private set; }
         public bool Disposed { get; private set; }
         public List<string> LoadedPlugins { get; } = [];
@@ -337,6 +373,16 @@ public sealed class KWinWaylandWindowAccessorTests
             {
                 if (WatcherSnapshot is not null)
                     await bridge.PushSnapshotAsync(WatcherSnapshot);
+                return true;
+            }
+
+            if (pluginName.StartsWith("windowswitcher_foreground_", StringComparison.Ordinal))
+            {
+                string foregroundRequestId = pluginName["windowswitcher_foreground_".Length..];
+                await bridge.CompleteForegroundQueryAsync(
+                    foregroundRequestId,
+                    ForegroundWindowId ?? string.Empty
+                );
                 return true;
             }
 

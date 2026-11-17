@@ -123,9 +123,11 @@ Renaming is especially useful when several clients initially share the same titl
 
 ### Arrange floating previews
 
-- Enable **Move windows** to drag previews.
+- Enable **Move windows** to drag previews. Dragging does not focus the source window; a short left click still does.
 - Enable **Resize windows** to resize previews individually.
-- Enable **Fixed size** to use the configured width and height for every preview.
+- Enable **Link width and height** to keep a preview in its source window's proportions while resizing. This is on by default.
+- Enable **Fixed size** to force every preview to the configured width and height.
+- Enable **Default window size** to start new previews at the configured width and height. Previews that already have a saved layout keep that size.
 - Enable **Focus on hover** to activate a client by moving the pointer over its preview.
 - Enable **Enable previews** to show live content inside floating windows.
 - Choose **Highlight color** to change the active-preview outline.
@@ -163,8 +165,10 @@ The keybind editor rejects duplicate shortcuts on one target and conflicts betwe
 | `Enable previews` | Enables live content in floating preview windows. |
 | `Start minimized` | Starts the main window hidden in the system tray. |
 | `Resize windows` | Allows previews to be resized individually. |
-| `Fixed size` | Applies one width and height to all previews. |
-| `Width` / `Height` | Sets the fixed preview dimensions, from 10 to 2000 pixels. |
+| `Link width and height` | Keeps preview width and height in the source window's proportions. On by default. |
+| `Fixed size` | Forces every preview to the configured width and height and disables resizing. |
+| `Default window size` | Starts new previews that have no saved layout at the configured width and height. Saved layouts stay as they are. |
+| `Width` / `Height` | Sets the shared width and height, from 10 to 2000 pixels, used by Fixed size and Default window size. |
 | `Highlight color` | Sets the outline color for the active preview. |
 
 Settings are persisted as they change.

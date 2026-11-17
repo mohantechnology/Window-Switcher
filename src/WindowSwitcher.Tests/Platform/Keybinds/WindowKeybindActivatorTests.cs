@@ -90,6 +90,95 @@ public sealed class WindowKeybindActivatorTests
     }
 
     [Fact]
+    public async Task TryActivateTarget_PinFocusedWindow_RaisesWindowPinRequested()
+    {
+        WindowConfig editor = CreateWindow("w-1", "Editor", "code");
+        var accessor = new FakeWinAccessor(editor) { ForegroundWindowId = "w-1" };
+        var sut = new WindowKeybindActivator(accessor, SelectAll, () => true);
+        string? pinnedWindowId = null;
+        sut.WindowPinRequested += (_, windowId) => pinnedWindowId = windowId;
+
+        bool activated = await sut.TryActivateTargetAsync(
+            KeybindBuiltInTargets.PinFocusedWindowTargetId
+        );
+
+        Assert.True(activated);
+        Assert.Equal("w-1", pinnedWindowId);
+        Assert.Empty(accessor.RaisedWindowIds);
+    }
+
+    [Fact]
+    public async Task TryActivateTarget_PinFocusedWindow_ReturnsFalseWhenDisabled()
+    {
+        WindowConfig editor = CreateWindow("w-1", "Editor", "code");
+        var accessor = new FakeWinAccessor(editor) { ForegroundWindowId = "w-1" };
+        var sut = new WindowKeybindActivator(accessor, SelectAll, () => false);
+        string? pinnedWindowId = null;
+        sut.WindowPinRequested += (_, windowId) => pinnedWindowId = windowId;
+
+        bool activated = await sut.TryActivateTargetAsync(
+            KeybindBuiltInTargets.PinFocusedWindowTargetId
+        );
+
+        Assert.False(activated);
+        Assert.Null(pinnedWindowId);
+    }
+
+    [Fact]
+    public async Task TryActivateTarget_PinFocusedWindow_ReturnsFalseWhenForegroundUnavailable()
+    {
+        var accessor = new FakeWinAccessor(CreateWindow("w-1", "Editor", "code"))
+        {
+            ForegroundWindowId = null,
+        };
+        var sut = new WindowKeybindActivator(accessor, SelectAll, () => true);
+        string? pinnedWindowId = null;
+        sut.WindowPinRequested += (_, windowId) => pinnedWindowId = windowId;
+
+        bool activated = await sut.TryActivateTargetAsync(
+            KeybindBuiltInTargets.PinFocusedWindowTargetId
+        );
+
+        Assert.False(activated);
+        Assert.Null(pinnedWindowId);
+    }
+
+    [Fact]
+    public async Task TryActivateTarget_PinFocusedWindow_ReturnsFalseWhenForegroundNotListed()
+    {
+        var accessor = new FakeWinAccessor(CreateWindow("w-1", "Editor", "code"))
+        {
+            ForegroundWindowId = "missing",
+        };
+        var sut = new WindowKeybindActivator(accessor, SelectAll, () => true);
+
+        Assert.False(
+            await sut.TryActivateTargetAsync(KeybindBuiltInTargets.PinFocusedWindowTargetId)
+        );
+    }
+
+    [Theory]
+    [InlineData(KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId)]
+    [InlineData(KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId)]
+    public async Task TryActivateTarget_HoverLocalActions_ReturnFalseWithoutSideEffects(
+        string targetId
+    )
+    {
+        WindowConfig editor = CreateWindow("w-1", "Editor", "code");
+        var accessor = new FakeWinAccessor(editor) { ForegroundWindowId = "w-1" };
+        var sut = new WindowKeybindActivator(accessor, SelectAll, () => true);
+        string? activatedWindowId = null;
+        string? pinnedWindowId = null;
+        sut.WindowActivated += (_, windowId) => activatedWindowId = windowId;
+        sut.WindowPinRequested += (_, windowId) => pinnedWindowId = windowId;
+
+        Assert.False(await sut.TryActivateTargetAsync(targetId));
+        Assert.Null(activatedWindowId);
+        Assert.Null(pinnedWindowId);
+        Assert.Empty(accessor.RaisedWindowIds);
+    }
+
+    [Fact]
     public async Task TryActivateTarget_BuiltInAction_RaisesWindowActivatedEvent()
     {
         WindowConfig editor = CreateWindow("w-1", "Editor", "code");
@@ -256,6 +345,12 @@ public sealed class WindowKeybindActivatorTests
             string windowTitle,
             CancellationToken cancellationToken = default
         ) => Task.FromResult(true);
+
+        public string? ForegroundWindowId { get; set; }
+
+        public override Task<string?> TryGetForegroundWindowIdAsync(
+            CancellationToken cancellationToken = default
+        ) => Task.FromResult(ForegroundWindowId);
     }
 
     private sealed class ReorderingFakeWinAccessor(params WindowConfig[] windows) : WinAccessorBase
@@ -291,6 +386,10 @@ public sealed class WindowKeybindActivatorTests
             string windowTitle,
             CancellationToken cancellationToken = default
         ) => Task.FromResult(true);
+
+        public override Task<string?> TryGetForegroundWindowIdAsync(
+            CancellationToken cancellationToken = default
+        ) => Task.FromResult<string?>(null);
     }
 
     private static IReadOnlyList<WindowConfig> SelectAll(IReadOnlyCollection<WindowConfig> windows)

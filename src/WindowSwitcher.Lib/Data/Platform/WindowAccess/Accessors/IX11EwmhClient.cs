@@ -11,6 +11,14 @@ internal interface IX11EwmhClient : IDisposable
     bool TryActivateWindow(uint windowId);
 
     bool TryRenameWindow(uint windowId, string title);
+
+    /// <summary>
+    /// Reads the EWMH active window identifier.
+    /// </summary>
+    /// <returns>
+    /// The active window id, or <see langword="null" /> when it cannot be resolved.
+    /// </returns>
+    uint? TryGetActiveWindowId();
 }
 
 internal readonly record struct X11EwmhWindow(uint WindowId, uint ProcessId, string Title);

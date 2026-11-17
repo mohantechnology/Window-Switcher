@@ -20,6 +20,7 @@ internal sealed class KWinWaylandWindowAccessor : WinAccessorBase, IAsyncDisposa
     internal const string WatcherPluginName = "windowswitcher_window_watcher";
     private static readonly TimeSpan FirstSnapshotTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ActivationTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ForegroundQueryTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan StartRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly IKWinScriptingClient _client;
@@ -31,6 +32,10 @@ internal sealed class KWinWaylandWindowAccessor : WinAccessorBase, IAsyncDisposa
     private readonly ConcurrentDictionary<int, string> _processNames = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingActivations =
         new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<
+        string,
+        TaskCompletionSource<string?>
+    > _pendingForegroundQueries = new(StringComparer.Ordinal);
     private readonly TaskCompletionSource _firstSnapshot = new(
         TaskCreationOptions.RunContinuationsAsynchronously
     );
@@ -164,6 +169,54 @@ internal sealed class KWinWaylandWindowAccessor : WinAccessorBase, IAsyncDisposa
         return Task.FromResult(false);
     }
 
+    public override async Task<string?> TryGetForegroundWindowIdAsync(
+        CancellationToken cancellationToken = default
+    )
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        string? busName = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (busName is null)
+            return null;
+
+        string requestId = Guid.NewGuid().ToString("N");
+        string pluginName = $"windowswitcher_foreground_{requestId}";
+        var completion = new TaskCompletionSource<string?>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        _pendingForegroundQueries[requestId] = completion;
+        try
+        {
+            string script = KWinScripts.BuildForegroundQuery(busName, requestId);
+            if (
+                !await _client
+                    .LoadAndRunAsync(pluginName, script, cancellationToken)
+                    .ConfigureAwait(false)
+            )
+                return null;
+
+            string? nativeId = await completion
+                .Task.WaitAsync(ForegroundQueryTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(nativeId))
+                return null;
+
+            return Guid.TryParse(nativeId, out Guid windowId) && windowId != Guid.Empty
+                ? FormatWindowId(windowId)
+                : null;
+        }
+        catch (TimeoutException)
+        {
+            _logger.Warning("KWin foreground query script did not report back in time");
+            return null;
+        }
+        finally
+        {
+            _pendingForegroundQueries.TryRemove(requestId, out _);
+            await _client.UnloadAsync(pluginName, CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
     public override void Dispose()
     {
         // Unloading the watcher needs an asynchronous D-Bus call; without it the watcher stays
@@ -292,6 +345,17 @@ internal sealed class KWinWaylandWindowAccessor : WinAccessorBase, IAsyncDisposa
             completion.TrySetResult(activated);
     }
 
+    private void OnForegroundQueryCompleted(string requestId, string windowId)
+    {
+        if (
+            _pendingForegroundQueries.TryGetValue(
+                requestId,
+                out TaskCompletionSource<string?>? completion
+            )
+        )
+            completion.TrySetResult(windowId);
+    }
+
     private sealed class Bridge(KWinWaylandWindowAccessor owner) : IKWinWindowBridge
     {
         public ObjectPath ObjectPath => KWinScripts.BridgePath;
@@ -305,6 +369,12 @@ internal sealed class KWinWaylandWindowAccessor : WinAccessorBase, IAsyncDisposa
         public Task CompleteActivationAsync(string requestId, bool activated)
         {
             owner.OnActivationCompleted(requestId, activated);
+            return Task.CompletedTask;
+        }
+
+        public Task CompleteForegroundQueryAsync(string requestId, string windowId)
+        {
+            owner.OnForegroundQueryCompleted(requestId, windowId);
             return Task.CompletedTask;
         }
     }

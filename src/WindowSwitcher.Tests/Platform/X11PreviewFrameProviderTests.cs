@@ -12,32 +12,67 @@ public sealed class X11PreviewFrameProviderTests
     [Fact]
     public async Task StreamAsync_RetriesSkippedCaptureWithoutNewDamageOrNewSession()
     {
-        var session = new FakeCaptureSession(
-            CaptureOutcome.Frame,
-            CaptureOutcome.Skipped,
-            CaptureOutcome.Frame
-        );
-        session.QueueDamage();
-        int createdSessions = 0;
-        await using var provider = new X11PreviewFrameProvider(_ =>
+        int previousFrameRate = PreviewFrameTiming.FramesPerSecond;
+        PreviewFrameTiming.SetFramesPerSecond(20);
+        try
         {
-            createdSessions++;
-            return session;
-        });
+            var session = new FakeCaptureSession(
+                CaptureOutcome.Frame,
+                CaptureOutcome.Skipped,
+                CaptureOutcome.Frame
+            );
+            session.QueueDamage();
+            int createdSessions = 0;
+            await using var provider = new X11PreviewFrameProvider(_ =>
+            {
+                createdSessions++;
+                return session;
+            });
 
-        await using IAsyncEnumerator<PreviewFrame> frames = provider
-            .StreamAsync("0x00000042", new ScreenshotRequest())
-            .GetAsyncEnumerator();
+            await using IAsyncEnumerator<PreviewFrame> frames = provider
+                .StreamAsync("0x00000042", new ScreenshotRequest())
+                .GetAsyncEnumerator();
 
-        Assert.True(await frames.MoveNextAsync().AsTask().WaitAsync(TestTimeout));
-        frames.Current.Dispose();
-        Assert.True(await frames.MoveNextAsync().AsTask().WaitAsync(TestTimeout));
-        frames.Current.Dispose();
+            Assert.True(await frames.MoveNextAsync().AsTask().WaitAsync(TestTimeout));
+            frames.Current.Dispose();
+            Assert.True(await frames.MoveNextAsync().AsTask().WaitAsync(TestTimeout));
+            frames.Current.Dispose();
 
-        Assert.Equal(3, session.CaptureCount);
-        Assert.Equal(1, session.ConsumedDamageCount);
-        Assert.Equal(1, createdSessions);
-        Assert.False(session.IsDisposed);
+            Assert.Equal(3, session.CaptureCount);
+            Assert.Equal(1, session.ConsumedDamageCount);
+            Assert.Equal(1, createdSessions);
+            Assert.False(session.IsDisposed);
+        }
+        finally
+        {
+            PreviewFrameTiming.SetFramesPerSecond(previousFrameRate);
+        }
+    }
+
+    [Fact]
+    public async Task StreamAsync_SnapshotMode_YieldsSingleFrameThenWaits()
+    {
+        int previousFrameRate = PreviewFrameTiming.FramesPerSecond;
+        PreviewFrameTiming.SetFramesPerSecond(0);
+        try
+        {
+            var session = new FakeCaptureSession(CaptureOutcome.Frame, CaptureOutcome.Frame);
+            await using var provider = new X11PreviewFrameProvider(_ => session);
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+            await using IAsyncEnumerator<PreviewFrame> frames = provider
+                .StreamAsync("0x00000042", new ScreenshotRequest(), timeout.Token)
+                .GetAsyncEnumerator();
+
+            Assert.True(await frames.MoveNextAsync().AsTask().WaitAsync(TestTimeout));
+            frames.Current.Dispose();
+            Assert.False(await frames.MoveNextAsync().AsTask().WaitAsync(TestTimeout));
+            Assert.Equal(1, session.CaptureCount);
+        }
+        finally
+        {
+            PreviewFrameTiming.SetFramesPerSecond(previousFrameRate);
+        }
     }
 
     [Fact]

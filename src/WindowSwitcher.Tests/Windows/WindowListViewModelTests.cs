@@ -68,6 +68,156 @@ public sealed class WindowListViewModelTests
     }
 
     [Fact]
+    public async Task TryPinWindow_AddsNonWhitelistedWindow()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
+            new WindowConfig { WindowId = "2", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Equal("2", Assert.Single(sut.WindowsConfigs).WindowId);
+
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Equal(2, sut.WindowsConfigs.Count);
+        Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
+        Assert.Contains("1", sut.PinnedWindowIds);
+    }
+
+    [Fact]
+    public async Task TryPinWindow_ReturnsAlreadyOpenWhenPreviewAlreadyExists()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Equal(PinWindowResult.AlreadyOpen, sut.TryPinWindow("1"));
+        Assert.Equal(PinWindowResult.AlreadyOpen, sut.TryPinWindow("1"));
+        Assert.Single(sut.WindowsConfigs);
+        Assert.Contains("1", sut.PinnedWindowIds);
+    }
+
+    [Fact]
+    public async Task FetchWindowsWithFiltersAsync_DropsPinWhenWindowCloses()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Single(sut.WindowsConfigs);
+
+        snapshotProvider.Windows = [];
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Empty(sut.WindowsConfigs);
+        Assert.Empty(sut.PinnedWindowIds);
+    }
+
+    [Fact]
+    public async Task TryCloseFloatingPreview_RemovesPreviewAndSuppressesReopen()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
+            new WindowConfig { WindowId = "2", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
+
+        Assert.True(sut.TryCloseFloatingPreview("1"));
+        Assert.DoesNotContain(sut.WindowsConfigs, window => window.WindowId == "1");
+        Assert.DoesNotContain("1", sut.PinnedWindowIds);
+        Assert.Contains("1", sut.ClosedFloatingPreviewIds);
+
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.DoesNotContain(sut.WindowsConfigs, window => window.WindowId == "1");
+    }
+
+    [Fact]
+    public async Task TryPinWindow_ClearsClosedPreviewSuppression()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Browser" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.True(sut.TryCloseFloatingPreview("1"));
+
+        Assert.Equal(PinWindowResult.Added, sut.TryPinWindow("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
+        Assert.DoesNotContain("1", sut.ClosedFloatingPreviewIds);
+    }
+
+    [Fact]
+    public async Task ClearClosedFloatingPreviews_AllowsWhitelistMatchAgain()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Single(sut.WindowsConfigs);
+
+        Assert.True(sut.TryCloseFloatingPreview("1"));
+        await sut.FetchWindowsWithFiltersAsync();
+        Assert.Empty(sut.WindowsConfigs);
+
+        sut.ClearClosedFloatingPreviews();
+        await sut.FetchWindowsWithFiltersAsync();
+
+        Assert.Contains(sut.WindowsConfigs, window => window.WindowId == "1");
+        Assert.Empty(sut.ClosedFloatingPreviewIds);
+    }
+
+    [Fact]
+    public void PauseRefresh_MarksRefreshAsPaused_UntilResume()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+
+        Assert.False(sut.IsRefreshPaused);
+
+        sut.PauseRefresh();
+        Assert.True(sut.IsRefreshPaused);
+
+        sut.ResumeRefresh();
+        Assert.False(sut.IsRefreshPaused);
+    }
+
+    [Fact]
+    public async Task ResumeRefresh_FetchesWindowsImmediately()
+    {
+        var snapshotProvider = new FakeWindowSnapshotProvider([
+            new WindowConfig { WindowId = "1", WindowTitle = "Game client" },
+        ]);
+        using var sut = CreateViewModel(snapshotProvider);
+        sut.PauseRefresh();
+        snapshotProvider.Windows =
+        [
+            new WindowConfig { WindowId = "2", WindowTitle = "Game launcher" },
+        ];
+
+        sut.ResumeRefresh();
+        WindowConfig window = await WaitForAsync(() => sut.WindowsConfigs.FirstOrDefault());
+
+        Assert.Equal("2", window.WindowId);
+        Assert.False(sut.IsRefreshPaused);
+    }
+
+    [Fact]
     public async Task PeriodicRefresh_LogsErrorAndKeepsRefreshing_WhenSnapshotProviderThrows()
     {
         var failure = new InvalidOperationException("snapshot failure");

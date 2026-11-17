@@ -58,6 +58,18 @@ public abstract class WinAccessorBase : IDisposable
     );
 
     /// <summary>
+    /// Attempts to resolve the currently focused top-level window identifier.
+    /// </summary>
+    /// <param name="cancellationToken">Token used to cancel the query.</param>
+    /// <returns>
+    /// The focused window id, or <see langword="null" /> when no eligible focused window can be
+    /// resolved.
+    /// </returns>
+    public abstract Task<string?> TryGetForegroundWindowIdAsync(
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
     /// Releases operating-system resources owned by the accessor.
     /// </summary>
     public virtual void Dispose() { }

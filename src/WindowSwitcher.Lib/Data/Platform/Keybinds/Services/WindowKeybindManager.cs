@@ -205,7 +205,11 @@ public sealed class WindowKeybindManager : IWindowKeybindManager
                         .Equals(normalizedCombination)
                 ) > 0;
 
-            if (target.Shortcuts.Count == 0)
+            // Keep built-in action targets so defaults are not re-seeded after the user clears them.
+            if (
+                target.Shortcuts.Count == 0
+                && !KeybindBuiltInTargets.IsBuiltInTarget(target.TargetId)
+            )
                 config.WindowKeybindTargets.Remove(target);
         });
 

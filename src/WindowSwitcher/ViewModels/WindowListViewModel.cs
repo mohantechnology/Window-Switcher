@@ -11,6 +11,13 @@ using WindowSwitcher.ViewModels.Abstractions;
 
 namespace WindowSwitcher.ViewModels;
 
+public enum PinWindowResult
+{
+    Ignored,
+    Added,
+    AlreadyOpen,
+}
+
 public partial class WindowListViewModel : ObservableObject, IDisposable
 {
     private const int WindowListRefreshIntervalMs = 250;
@@ -20,6 +27,9 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
     private readonly IViewModelDispatcher _dispatcher;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly object _pauseSync = new();
+    private TaskCompletionSource _resumeTcs = CreateCompletedResumeSignal();
+    private bool _isPaused;
 
     [ObservableProperty]
     private ObservableCollection<WindowConfig> _windowsConfigs = new();
@@ -28,6 +38,10 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
     private WindowConfig? _selectedWindow;
 
     public HashSet<string> TempWindowIdsBlacklist { get; } = new(StringComparer.Ordinal);
+
+    public HashSet<string> PinnedWindowIds { get; } = new(StringComparer.Ordinal);
+
+    public HashSet<string> ClosedFloatingPreviewIds { get; } = new(StringComparer.Ordinal);
 
     public WindowListViewModel(
         IWindowSnapshotProvider windowSnapshotProvider,
@@ -56,6 +70,17 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
+                Task resumeSignal;
+                lock (_pauseSync)
+                    resumeSignal = _resumeTcs.Task;
+
+                await resumeSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+                bool isPaused;
+                lock (_pauseSync)
+                    isPaused = _isPaused;
+                if (isPaused)
+                    continue;
+
                 await RefreshWindowsAsync(cancellationToken).ConfigureAwait(false);
             }
         }
@@ -65,12 +90,64 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Stops periodic window-list polling until <see cref="ResumeRefresh"/> is called.
+    /// </summary>
+    public void PauseRefresh()
+    {
+        lock (_pauseSync)
+        {
+            if (_isPaused)
+                return;
+
+            _isPaused = true;
+            _resumeTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
+    /// <summary>
+    /// Resumes periodic window-list polling and requests an immediate refresh.
+    /// </summary>
+    public void ResumeRefresh()
+    {
+        TaskCompletionSource? resumeSignal = null;
+        lock (_pauseSync)
+        {
+            if (!_isPaused)
+                return;
+
+            _isPaused = false;
+            resumeSignal = _resumeTcs;
+        }
+
+        resumeSignal?.TrySetResult();
+        _ = FetchWindowsWithFiltersAsync();
+    }
+
+    public bool IsRefreshPaused
+    {
+        get
+        {
+            lock (_pauseSync)
+                return _isPaused;
+        }
+    }
+
     public void Dispose()
     {
         if (_cts.IsCancellationRequested)
             return;
         _cts.Cancel();
+        lock (_pauseSync)
+            _resumeTcs.TrySetResult();
         _cts.Dispose();
+    }
+
+    private static TaskCompletionSource CreateCompletedResumeSignal()
+    {
+        var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        signal.SetResult();
+        return signal;
     }
 
     public async Task FetchWindowsWithFiltersAsync(CancellationToken cancellationToken = default)
@@ -93,6 +170,70 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    public PinWindowResult TryPinWindow(string windowId)
+    {
+        if (string.IsNullOrWhiteSpace(windowId))
+            return PinWindowResult.Ignored;
+
+        ClosedFloatingPreviewIds.Remove(windowId);
+
+        bool alreadyListed = WindowsConfigs.Any(window =>
+            string.Equals(window.WindowId, windowId, StringComparison.Ordinal)
+        );
+        if (alreadyListed)
+        {
+            PinnedWindowIds.Add(windowId);
+            return PinWindowResult.AlreadyOpen;
+        }
+
+        if (!PinnedWindowIds.Add(windowId))
+            return PinWindowResult.Ignored;
+
+        _ = FetchWindowsWithFiltersAsync();
+        return PinWindowResult.Added;
+    }
+
+    /// <summary>
+    /// Clears session close-suppressions so whitelist/prefix matching can show previews again.
+    /// </summary>
+    public void ClearClosedFloatingPreviews()
+    {
+        if (ClosedFloatingPreviewIds.Count == 0)
+            return;
+
+        ClosedFloatingPreviewIds.Clear();
+        _ = FetchWindowsWithFiltersAsync();
+    }
+
+    /// <summary>
+    /// Closes one floating preview for this session without changing the main window.
+    /// </summary>
+    public bool TryCloseFloatingPreview(string windowId)
+    {
+        if (string.IsNullOrWhiteSpace(windowId))
+            return false;
+
+        PinnedWindowIds.Remove(windowId);
+        ClosedFloatingPreviewIds.Add(windowId);
+
+        WindowConfig? existing = WindowsConfigs.FirstOrDefault(window =>
+            string.Equals(window.WindowId, windowId, StringComparison.Ordinal)
+        );
+        if (existing is null)
+            return false;
+
+        WindowsConfigs.Remove(existing);
+        if (
+            SelectedWindow is not null
+            && string.Equals(SelectedWindow.WindowId, windowId, StringComparison.Ordinal)
+        )
+        {
+            SelectedWindow = null;
+        }
+
+        return true;
+    }
+
     private void ApplyWindowsWithFilters(IReadOnlyCollection<WindowConfig> fetchedWindows)
     {
         WindowFilterSettings filterSettings = _windowFilterSettingsProvider.GetSettings();
@@ -108,12 +249,18 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
         {
             fetchedIds.Add(fetchedWindow.WindowId);
 
+            bool isPinned = PinnedWindowIds.Contains(fetchedWindow.WindowId);
+            bool isClosedSuppressed =
+                !isPinned && ClosedFloatingPreviewIds.Contains(fetchedWindow.WindowId);
             bool isOnBlacklist =
                 filterSettings.BlacklistPrefixes.Contains(fetchedWindow.WindowTitle)
-                || TempWindowIdsBlacklist.Contains(fetchedWindow.WindowId);
-            bool isOnWhiteList = filterSettings.WhitelistPrefixes.Any(prefix =>
-                fetchedWindow.WindowTitle.Contains(prefix, StringComparison.OrdinalIgnoreCase)
-            );
+                || TempWindowIdsBlacklist.Contains(fetchedWindow.WindowId)
+                || isClosedSuppressed;
+            bool isOnWhiteList =
+                isPinned
+                || filterSettings.WhitelistPrefixes.Any(prefix =>
+                    fetchedWindow.WindowTitle.Contains(prefix, StringComparison.OrdinalIgnoreCase)
+                );
             bool isOnWindowsList = existingById.TryGetValue(
                 fetchedWindow.WindowId,
                 out WindowConfig? existingConfig
@@ -145,8 +292,13 @@ public partial class WindowListViewModel : ObservableObject, IDisposable
             if (fetchedIds.Contains(window.WindowId))
                 continue;
 
+            PinnedWindowIds.Remove(window.WindowId);
+            ClosedFloatingPreviewIds.Remove(window.WindowId);
             WindowsConfigs.RemoveAt(i);
         }
+
+        PinnedWindowIds.RemoveWhere(pinnedWindowId => !fetchedIds.Contains(pinnedWindowId));
+        ClosedFloatingPreviewIds.RemoveWhere(closedWindowId => !fetchedIds.Contains(closedWindowId));
 
         if (SelectedWindow is null)
             return;

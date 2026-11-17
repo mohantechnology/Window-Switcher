@@ -46,7 +46,7 @@ public class WindowConfig : INotifyPropertyChanged
             field = value;
             OnPropertyChanged();
         }
-    } = 100;
+    } = FloatingWindowInitialSize.FallbackWidth;
 
     public int WindowHeight
     {
@@ -58,7 +58,7 @@ public class WindowConfig : INotifyPropertyChanged
             field = value;
             OnPropertyChanged();
         }
-    } = 83;
+    } = FloatingWindowInitialSize.FallbackHeight;
 
     public int WindowLeft
     {
@@ -83,6 +83,34 @@ public class WindowConfig : INotifyPropertyChanged
             OnPropertyChanged();
         }
     } = 100;
+
+    public double PreviewOpacity
+    {
+        get;
+        set
+        {
+            if (field == value)
+                return;
+            field = value;
+            OnPropertyChanged();
+        }
+    } = 1.0;
+
+    /// <summary>
+    /// Per-window live preview choice. <see langword="null"/> follows the global setting.
+    /// Changing the global Enable previews setting clears this override.
+    /// </summary>
+    public bool? LivePreviewOverride
+    {
+        get;
+        set
+        {
+            if (field == value)
+                return;
+            field = value;
+            OnPropertyChanged();
+        }
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

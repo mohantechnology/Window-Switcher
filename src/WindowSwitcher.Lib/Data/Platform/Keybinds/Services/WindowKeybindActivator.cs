@@ -1,3 +1,4 @@
+using WindowSwitcher.Lib.Data;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Abstractions;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Utilities;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.Accessors.Abstractions;
@@ -16,21 +17,26 @@ public sealed class WindowKeybindActivator : IWindowKeybindActivator
         IReadOnlyCollection<WindowConfig>,
         IReadOnlyList<WindowConfig>
     > _cycleCandidatesResolver;
+    private readonly Func<bool> _isPinFocusedWindowEnabled;
     private readonly List<string> _cycleOrderWindowIds = [];
     private string _lastActivatedClientId = string.Empty;
 
     /// <inheritdoc />
     public event EventHandler<string>? WindowActivated;
 
+    /// <inheritdoc />
+    public event EventHandler<string>? WindowPinRequested;
+
     /// <summary>
     /// Creates an activator using the shared runtime window accessor.
     /// </summary>
     public WindowKeybindActivator(WinAccessorBase accessor)
-        : this(accessor, ResolveSelectedCycleCandidates) { }
+        : this(accessor, ResolveSelectedCycleCandidates, ReadPinFocusedWindowEnabled) { }
 
     internal WindowKeybindActivator(
         WinAccessorBase accessor,
-        Func<IReadOnlyCollection<WindowConfig>, IReadOnlyList<WindowConfig>> cycleCandidatesResolver
+        Func<IReadOnlyCollection<WindowConfig>, IReadOnlyList<WindowConfig>> cycleCandidatesResolver,
+        Func<bool>? isPinFocusedWindowEnabled = null
     )
     {
         ArgumentNullException.ThrowIfNull(accessor);
@@ -38,6 +44,7 @@ public sealed class WindowKeybindActivator : IWindowKeybindActivator
 
         _accessor = accessor;
         _cycleCandidatesResolver = cycleCandidatesResolver;
+        _isPinFocusedWindowEnabled = isPinFocusedWindowEnabled ?? ReadPinFocusedWindowEnabled;
     }
 
     /// <inheritdoc />
@@ -78,6 +85,19 @@ public sealed class WindowKeybindActivator : IWindowKeybindActivator
             )
         )
             return await TryFocusActiveClientAsync(cancellationToken).ConfigureAwait(false);
+
+        if (
+            string.Equals(
+                normalizedTargetId,
+                KeybindBuiltInTargets.PinFocusedWindowTargetId,
+                StringComparison.Ordinal
+            )
+        )
+            return await TryPinFocusedWindowAsync(cancellationToken).ConfigureAwait(false);
+
+        // Hover-local mouse-wheel actions are applied by FloatingWindow, not the global activator.
+        if (KeybindBuiltInTargets.IsHoverLocalTarget(normalizedTargetId))
+            return false;
 
         IReadOnlyCollection<WindowConfig> windows = await _accessor
             .GetWindowsAsync(cancellationToken)
@@ -202,6 +222,30 @@ public sealed class WindowKeybindActivator : IWindowKeybindActivator
         return true;
     }
 
+    private async Task<bool> TryPinFocusedWindowAsync(CancellationToken cancellationToken)
+    {
+        if (!_isPinFocusedWindowEnabled())
+            return false;
+
+        string? foregroundWindowId = await _accessor
+            .TryGetForegroundWindowIdAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(foregroundWindowId))
+            return false;
+
+        IReadOnlyCollection<WindowConfig> windows = await _accessor
+            .GetWindowsAsync(cancellationToken)
+            .ConfigureAwait(false);
+        bool windowExists = windows.Any(window =>
+            string.Equals(window.WindowId, foregroundWindowId, StringComparison.Ordinal)
+        );
+        if (!windowExists)
+            return false;
+
+        WindowPinRequested?.Invoke(this, foregroundWindowId);
+        return true;
+    }
+
     private IReadOnlyList<WindowConfig> StabilizeCycleOrder(IReadOnlyList<WindowConfig> candidates)
     {
         var windowsById = new Dictionary<string, WindowConfig>(StringComparer.Ordinal);
@@ -247,6 +291,13 @@ public sealed class WindowKeybindActivator : IWindowKeybindActivator
         }
 
         return -1;
+    }
+
+    private static bool ReadPinFocusedWindowEnabled()
+    {
+        return ConfigFileAccessor
+            .GetInstance()
+            .ReadConfig(config => config.EnablePinFocusedWindow);
     }
 
     private static IReadOnlyList<WindowConfig> ResolveSelectedCycleCandidates(

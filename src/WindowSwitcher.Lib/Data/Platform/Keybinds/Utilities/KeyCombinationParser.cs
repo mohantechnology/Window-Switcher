@@ -132,6 +132,10 @@ public static class KeyCombinationParser
             ["ABNTC1"] = KeybindPrimaryKey.IntlBackslash,
             ["<"] = KeybindPrimaryKey.IntlBackslash,
             [">"] = KeybindPrimaryKey.IntlBackslash,
+            ["MOUSEWHEEL"] = KeybindPrimaryKey.MouseWheel,
+            ["WHEEL"] = KeybindPrimaryKey.MouseWheel,
+            ["SCROLLWHEEL"] = KeybindPrimaryKey.MouseWheel,
+            ["MOUSE SCROLL"] = KeybindPrimaryKey.MouseWheel,
         };
 
     /// <summary>
@@ -364,6 +368,7 @@ public static class KeyCombinationParser
             KeybindPrimaryKey.Period => "Period",
             KeybindPrimaryKey.Slash => "Slash",
             KeybindPrimaryKey.IntlBackslash => "IntlBackslash",
+            KeybindPrimaryKey.MouseWheel => "MouseWheel",
             _ => key.ToString(),
         };
     }

@@ -1,6 +1,7 @@
 using System.Reflection;
 using WindowSwitcher.Lib.Data;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Models;
+using WindowSwitcher.Lib.Data.Platform.Keybinds.Utilities;
 using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Pipewire;
 using WindowSwitcher.Lib.Models;
 using Xunit;
@@ -24,8 +25,51 @@ public sealed class ConfigFileAccessorTests
             Assert.NotNull(sut.Config.BlacklistPrefixes);
             Assert.NotNull(sut.Config.FloatingWindowsConfig);
             Assert.NotNull(sut.Config.WindowKeybindTargets);
+            WindowKeybindTargetConfig pinTarget = Assert.Single(
+                sut.Config.WindowKeybindTargets,
+                target =>
+                    target.TargetId == KeybindBuiltInTargets.PinFocusedWindowTargetId
+            );
+            WindowKeybindShortcut pinShortcut = Assert.Single(pinTarget.Shortcuts);
+            Assert.True(pinShortcut.Combination.Meta);
+            Assert.True(pinShortcut.Combination.Alt);
+            Assert.False(pinShortcut.Combination.Ctrl);
+            Assert.False(pinShortcut.Combination.Shift);
+            Assert.Equal(KeybindPrimaryKey.Q, pinShortcut.Combination.Key);
+            Assert.Equal(
+                "Alt+Meta+Q",
+                KeyCombinationParser.ToCanonicalString(pinShortcut.Combination)
+            );
+            Assert.True(sut.Config.EnablePinFocusedWindow);
+            Assert.True(sut.Config.ChangeSizeOnHover);
+            Assert.True(sut.Config.ChangeOpacityOnHover);
+            Assert.Equal(1.0, sut.Config.DefaultPreviewOpacity);
+            Assert.Equal(1, sut.Config.PreviewFrameRate);
+            Assert.Equal(10, sut.Config.FloatingWindowLabelFontSize);
             Assert.Equal(new ConfigFile().SentryDsn, sut.Config.SentryDsn);
             Assert.True(Guid.TryParse(sut.Config.TelemetryInstallationId, out _));
+
+            WindowKeybindTargetConfig sizeTarget = Assert.Single(
+                sut.Config.WindowKeybindTargets,
+                target =>
+                    target.TargetId == KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId
+            );
+            WindowKeybindShortcut sizeShortcut = Assert.Single(sizeTarget.Shortcuts);
+            Assert.True(sizeShortcut.Combination.Meta);
+            Assert.True(sizeShortcut.Combination.Ctrl);
+            Assert.False(sizeShortcut.Combination.Shift);
+            Assert.Equal(KeybindPrimaryKey.MouseWheel, sizeShortcut.Combination.Key);
+
+            WindowKeybindTargetConfig opacityTarget = Assert.Single(
+                sut.Config.WindowKeybindTargets,
+                target =>
+                    target.TargetId == KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId
+            );
+            WindowKeybindShortcut opacityShortcut = Assert.Single(opacityTarget.Shortcuts);
+            Assert.True(opacityShortcut.Combination.Meta);
+            Assert.True(opacityShortcut.Combination.Shift);
+            Assert.False(opacityShortcut.Combination.Ctrl);
+            Assert.Equal(KeybindPrimaryKey.MouseWheel, opacityShortcut.Combination.Key);
         }
         finally
         {
@@ -99,12 +143,46 @@ public sealed class ConfigFileAccessorTests
             );
             Assert.Equal("proc|my title", persistedConfig.ConfigKey);
 
-            WindowKeybindTargetConfig keybindTarget = Assert.Single(config.WindowKeybindTargets);
-            Assert.Equal("proc|editor", keybindTarget.TargetId);
+            WindowKeybindTargetConfig keybindTarget = Assert.Single(
+                config.WindowKeybindTargets,
+                target => target.TargetId == "proc|editor"
+            );
             Assert.Equal("Editor Window", keybindTarget.DisplayLabel);
             WindowKeybindShortcut shortcut = Assert.Single(keybindTarget.Shortcuts);
             Assert.True(shortcut.Combination.Ctrl);
             Assert.Equal(KeybindPrimaryKey.A, shortcut.Combination.Key);
+            Assert.Contains(
+                config.WindowKeybindTargets,
+                target => target.TargetId == KeybindBuiltInTargets.PinFocusedWindowTargetId
+            );
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void NormalizeConfig_DoesNotReseedPinShortcut_WhenTargetExistsEmpty()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            var sut = CreateAccessor(dataFolder);
+            sut.SaveWindowKeybindTargets([
+                new WindowKeybindTargetConfig
+                {
+                    TargetId = KeybindBuiltInTargets.PinFocusedWindowTargetId,
+                    DisplayLabel = KeybindBuiltInTargets.PinFocusedWindowDisplayName,
+                    Shortcuts = [],
+                },
+            ]);
+
+            WindowKeybindTargetConfig pinTarget = Assert.Single(
+                sut.Config.WindowKeybindTargets,
+                target => target.TargetId == KeybindBuiltInTargets.PinFocusedWindowTargetId
+            );
+            Assert.Empty(pinTarget.Shortcuts);
         }
         finally
         {
@@ -465,6 +543,112 @@ public sealed class ConfigFileAccessorTests
 
             string json = File.ReadAllText(sut.GetFilePath());
             Assert.Contains("\"WindowWidth\": 777", json, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void UseDefaultWindowSize_DefaultsToTrueWhenMissing_AndRoundTripsFalse()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            File.WriteAllText(Path.Combine(dataFolder, "config.json"), "{ }");
+            var loaded = CreateAccessor(dataFolder);
+            Assert.True(loaded.ReadConfig(config => config.UseDefaultWindowSize));
+
+            loaded.UpdateConfig(config => config.UseDefaultWindowSize = false);
+
+            string json = File.ReadAllText(loaded.GetFilePath());
+            Assert.Contains("\"UseDefaultWindowSize\": false", json, StringComparison.Ordinal);
+            Assert.False(loaded.ReadConfig(config => config.UseDefaultWindowSize));
+
+            var reloaded = CreateAccessor(dataFolder);
+            Assert.False(reloaded.Config.UseDefaultWindowSize);
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void FloatingWindowLabelFontSize_DefaultsToTen_ClampsAndRoundTrips()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            File.WriteAllText(Path.Combine(dataFolder, "config.json"), "{ }");
+            var sut = CreateAccessor(dataFolder);
+            Assert.Equal(10, sut.ReadConfig(config => config.FloatingWindowLabelFontSize));
+
+            sut.UpdateConfig(config => config.FloatingWindowLabelFontSize = 18);
+            Assert.Equal(18, sut.ReadConfig(config => config.FloatingWindowLabelFontSize));
+
+            sut.UpdateConfig(config => config.FloatingWindowLabelFontSize = 100);
+            Assert.Equal(32, sut.ReadConfig(config => config.FloatingWindowLabelFontSize));
+
+            sut.UpdateConfig(config => config.FloatingWindowLabelFontSize = 1);
+            Assert.Equal(8, sut.Config.FloatingWindowLabelFontSize);
+
+            var reloaded = CreateAccessor(dataFolder);
+            Assert.Equal(8, reloaded.Config.FloatingWindowLabelFontSize);
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void LivePreviewOverride_RoundTripsWithFloatingWindowSettings()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            var sut = CreateAccessor(dataFolder);
+            sut.SaveFloatingWindowSettings(
+                new WindowConfig
+                {
+                    WindowId = "window-1",
+                    ProcessName = "Proc",
+                    WindowTitle = "Editor",
+                    LivePreviewOverride = false,
+                }
+            );
+
+            var reloaded = CreateAccessor(dataFolder);
+            WindowConfig? resolved = reloaded.GetFloatingWindowConfig(
+                new WindowConfig { ProcessName = "Proc", WindowTitle = "Editor" }
+            );
+
+            Assert.NotNull(resolved);
+            Assert.False(resolved!.LivePreviewOverride);
+        }
+        finally
+        {
+            DeleteDirectory(dataFolder);
+        }
+    }
+
+    [Fact]
+    public void UpdateConfig_PersistsAutoStartInBackground()
+    {
+        string dataFolder = CreateTempDataFolder();
+        try
+        {
+            var sut = CreateAccessor(dataFolder);
+
+            Assert.True(sut.Config.AutoStartInBackground);
+
+            sut.UpdateConfig(config => config.AutoStartInBackground = false);
+
+            string json = File.ReadAllText(sut.GetFilePath());
+            Assert.Contains("\"AutoStartInBackground\": false", json, StringComparison.Ordinal);
+            Assert.False(sut.ReadConfig(config => config.AutoStartInBackground));
         }
         finally
         {

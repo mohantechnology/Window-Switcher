@@ -77,9 +77,10 @@ public partial class MainWindow : Window, IFloatingWindowHost
         );
         FiltersWindow = new FiltersWindow(
             _configurationService.GetWhitelistPrefixes().ToList(),
-            _configurationService.GetBlacklistPrefixes().ToList()
+            _configurationService.GetBlacklistPrefixes().ToList(),
+            onWhitelistChanged: () => ViewModel.ClearClosedFloatingPreviews()
         );
-        SettingsWindow = new SettingsWindow(ApplySettings);
+        SettingsWindow = new SettingsWindow(ApplySettings, ApplyDefaultPreviewOpacity);
         KeybindsWindow = new KeybindsWindow(() => ViewModel.WindowsConfigs.ToArray());
         AppInfoWindow = new AppInfoWindow(RequestApplicationShutdown)
         {
@@ -111,6 +112,7 @@ public partial class MainWindow : Window, IFloatingWindowHost
         Title = StaticData.AppName;
 
         _windowKeybindActivator = AppServiceProvider.GetRequiredService<IWindowKeybindActivator>();
+        _windowKeybindActivator.WindowPinRequested += OnWindowPinRequested;
         _previewCoordinator = new FloatingPreviewCoordinator(
             _windowKeybindActivator,
             dispatcher,
@@ -138,12 +140,21 @@ public partial class MainWindow : Window, IFloatingWindowHost
         }
 
         if (_configurationService.ShouldStartMinimized())
-            Dispatcher.UIThread.Post(HideToTray, DispatcherPriority.Background);
+        {
+            ShowInTaskbar = false;
+            Opened += OnOpenedHideToTray;
+        }
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        StaticData.AppClosing = true;
+        if (!StaticData.AppClosing)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
         if (!_updateNotificationCts.IsCancellationRequested)
             _updateNotificationCts.Cancel();
         if (OperatingSystem.IsLinux())
@@ -151,6 +162,7 @@ public partial class MainWindow : Window, IFloatingWindowHost
         if (_previewSelectionReset is not null)
             _previewSelectionReset.SelectionPromptChanged -= OnSelectionPromptChanged;
         PropertyChanged -= OnWindowPropertyChanged;
+        _windowKeybindActivator.WindowPinRequested -= OnWindowPinRequested;
         _previewCoordinator.Dispose();
         ViewModel.WindowsConfigs.CollectionChanged -= WindowsConfigsChanged;
         FiltersWindow.Close();
@@ -166,6 +178,15 @@ public partial class MainWindow : Window, IFloatingWindowHost
         base.OnClosing(e);
     }
 
+    public void QuitFromTray()
+    {
+        if (StaticData.AppClosing)
+            return;
+
+        StaticData.AppClosing = true;
+        Close();
+    }
+
     public void RestoreFromTray()
     {
         if (_isHiddenToTray)
@@ -177,6 +198,7 @@ public partial class MainWindow : Window, IFloatingWindowHost
         _isHiddenToTray = false;
         SetWindowStateWithoutTrayHandling(WindowState.Normal);
         Activate();
+        UpdateWindowListRefreshState();
     }
 
     private void HideToTray()
@@ -188,6 +210,22 @@ public partial class MainWindow : Window, IFloatingWindowHost
         ShowInTaskbar = false;
         SetWindowStateWithoutTrayHandling(WindowState.Normal);
         Hide();
+        UpdateWindowListRefreshState();
+    }
+
+    private void OnOpenedHideToTray(object? sender, EventArgs e)
+    {
+        Opened -= OnOpenedHideToTray;
+        HideToTray();
+    }
+
+    private void UpdateWindowListRefreshState()
+    {
+        bool shouldRefresh = !_isHiddenToTray || _floatingWindowRegistry.Count > 0;
+        if (shouldRefresh)
+            ViewModel.ResumeRefresh();
+        else
+            ViewModel.PauseRefresh();
     }
 
     private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -254,6 +292,14 @@ public partial class MainWindow : Window, IFloatingWindowHost
     public void AddToTempBlacklist(string windowId)
     {
         _blacklistCoordinator.AddToTemporaryBlacklist(windowId);
+    }
+
+    public void CloseFloatingPreview(string windowId)
+    {
+        if (string.IsNullOrWhiteSpace(windowId))
+            return;
+
+        _ = ViewModel.TryCloseFloatingPreview(windowId);
     }
 
     public bool CanResetPreviewSelection => _previewSelectionReset is not null;
@@ -360,6 +406,21 @@ public partial class MainWindow : Window, IFloatingWindowHost
     private void WindowsConfigsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         _floatingWindowRegistry.SynchronizeWithCollectionChange(e, ViewModel.WindowsConfigs);
+        UpdateWindowListRefreshState();
+    }
+
+    private void OnWindowPinRequested(object? sender, string windowId)
+    {
+        if (string.IsNullOrWhiteSpace(windowId) || StaticData.AppClosing)
+            return;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (ViewModel.TryPinWindow(windowId) != PinWindowResult.AlreadyOpen)
+                return;
+
+            _floatingWindowRegistry.PulseAlreadyOpen(windowId);
+        });
     }
 
     public void ApplySettings()
@@ -367,11 +428,13 @@ public partial class MainWindow : Window, IFloatingWindowHost
         _floatingWindowRegistry.ApplySettings();
     }
 
+    public void ApplyDefaultPreviewOpacity(double opacity)
+    {
+        _floatingWindowRegistry.ApplyDefaultPreviewOpacity(opacity);
+    }
+
     private void RequestApplicationShutdown()
     {
-        if (StaticData.AppClosing)
-            return;
-
-        Close();
+        QuitFromTray();
     }
 }

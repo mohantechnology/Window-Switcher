@@ -136,7 +136,7 @@ internal sealed class PipeWireNativeStream : IPipeWireNativeStream
                 pipeWireNodeId,
                 checked((uint)width),
                 checked((uint)height),
-                PreviewFrameTiming.FramesPerSecond,
+                PreviewFrameTiming.NativeMaximumFramerate,
                 dmaBufFormats,
                 dmaBufModifiers,
                 checked((uint)dmaBufCapabilities.Length),

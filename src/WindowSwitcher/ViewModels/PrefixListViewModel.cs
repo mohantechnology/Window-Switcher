@@ -26,6 +26,11 @@ public partial class PrefixListViewModel : ObservableObject
 
     public IRelayCommand AddCommand { get; }
 
+    /// <summary>
+    /// Raised after a prefix is added or removed from this list.
+    /// </summary>
+    public event EventHandler? PrefixesChanged;
+
     public PrefixListViewModel(
         IPrefixListService prefixListService,
         IViewModelDispatcher dispatcher
@@ -46,6 +51,7 @@ public partial class PrefixListViewModel : ObservableObject
             return false;
 
         Prefixes.Add(normalizedPrefix);
+        PrefixesChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
@@ -76,5 +82,7 @@ public partial class PrefixListViewModel : ObservableObject
         Prefixes.Remove(value);
         if (SelectedPrefix == value)
             SelectedPrefix = null;
+
+        PrefixesChanged?.Invoke(this, EventArgs.Empty);
     }
 }

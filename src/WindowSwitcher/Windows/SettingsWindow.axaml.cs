@@ -1,6 +1,8 @@
 using System;
 using Avalonia.Controls;
 using Avalonia.Media;
+using WindowSwitcher.Hosting;
+using WindowSwitcher.Lib.Data.Platform.Autostart.Abstractions;
 using WindowSwitcher.Theming;
 using WindowSwitcher.ViewModels;
 using WindowSwitcher.Windows.Services;
@@ -12,13 +14,15 @@ public partial class SettingsWindow : Window
     private readonly UtilityWindowService _windowLifecycle = new();
     private readonly SettingsViewModel _viewModel;
 
-    public SettingsWindow(Action applyAction)
+    public SettingsWindow(Action applyAction, Action<double> applyDefaultPreviewOpacityAction)
     {
         InitializeComponent();
         _viewModel = new SettingsViewModel(
             new ConfigFileSettingsRepository(),
+            AppServiceProvider.GetRequiredService<IAutoStartService>(),
             applyAction,
-            ApplyPreviewHighlightColor
+            ApplyPreviewHighlightColor,
+            applyDefaultPreviewOpacityAction
         );
         DataContext = _viewModel;
         Closing += OnClosing;

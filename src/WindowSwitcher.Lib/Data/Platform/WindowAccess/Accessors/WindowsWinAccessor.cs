@@ -244,4 +244,53 @@ internal sealed class WindowsWinAccessor : WinAccessorBase
             cancellationToken
         );
     }
+
+    public override Task<string?> TryGetForegroundWindowIdAsync(
+        CancellationToken cancellationToken = default
+    )
+    {
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                IntPtr foregroundWindowHandle = User32Functions.GetForegroundWindow();
+                if (foregroundWindowHandle == IntPtr.Zero)
+                    return null;
+
+                uint currentProcessId = (uint)Process.GetCurrentProcess().Id;
+                IntPtr resolvedHandle = ResolveEligibleTopLevelWindow(foregroundWindowHandle);
+                if (resolvedHandle == IntPtr.Zero)
+                    return null;
+
+                User32Functions.GetWindowThreadProcessId(resolvedHandle, out uint processId);
+                if (processId == 0 || processId == currentProcessId)
+                    return null;
+
+                return resolvedHandle.ToString();
+            },
+            cancellationToken
+        );
+    }
+
+    /// <summary>
+    /// Walks the owner chain from a focused HWND to an eligible top-level window that
+    /// appears in enumeration (owned/tool windows are otherwise skipped by pin).
+    /// </summary>
+    private static IntPtr ResolveEligibleTopLevelWindow(IntPtr windowHandle)
+    {
+        IntPtr current = windowHandle;
+        for (int depth = 0; depth < 16; depth++)
+        {
+            if (IsEligibleTopLevelWindow(current))
+                return current;
+
+            IntPtr owner = User32Functions.GetWindow(current, GwOwner);
+            if (owner == IntPtr.Zero || owner == current)
+                break;
+
+            current = owner;
+        }
+
+        return IntPtr.Zero;
+    }
 }

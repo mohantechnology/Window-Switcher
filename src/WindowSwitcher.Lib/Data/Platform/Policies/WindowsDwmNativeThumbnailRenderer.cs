@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Serilog;
 using WindowSwitcher.Lib.Data.Platform.Interop;
 using WindowSwitcher.Lib.Data.Platform.SystemInfo.Abstractions;
 using WindowSwitcher.Lib.Models;
@@ -11,11 +12,14 @@ namespace WindowSwitcher.Lib.Data.Platform.Policies;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
 {
+    private static readonly ILogger Logger = Log.ForContext<WindowsDwmNativeThumbnailRenderer>();
+
     /// <inheritdoc />
     public bool TryRegister(
         nint destinationWindowHandle,
         nint sourceWindowHandle,
         NativeThumbnailBounds destinationBounds,
+        byte opacity,
         out nint thumbnailHandle
     )
     {
@@ -29,18 +33,37 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
             out nint registeredThumbnailHandle
         );
         if (result != 0)
+        {
+            Logger.Warning("DWM thumbnail registration failed with result {Result}", result);
             return false;
+        }
+
+        int flags =
+            DwmFunctions.DWM_TNP_SOURCECLIENTAREAONLY
+            | DwmFunctions.DWM_TNP_VISIBLE
+            | DwmFunctions.DWM_TNP_OPACITY
+            | DwmFunctions.DWM_TNP_RECTDESTINATION;
+        var source = new DwmFunctions.Rect(0, 0, 0, 0);
+        if (
+            DwmFunctions.DwmQueryThumbnailSourceSize(
+                registeredThumbnailHandle,
+                out DwmFunctions.PSIZE sourceSize
+            ) == 0
+            && sourceSize.x > 0
+            && sourceSize.y > 0
+        )
+        {
+            // Sample the full source frame so the thumbnail is not taken from a small region.
+            flags |= DwmFunctions.DWM_TNP_RECTSOURCE;
+            source = new DwmFunctions.Rect(0, 0, sourceSize.x, sourceSize.y);
+        }
 
         var properties = new DwmFunctions.DWM_THUMBNAIL_PROPERTIES
         {
-            dwFlags =
-                DwmFunctions.DWM_TNP_SOURCECLIENTAREAONLY
-                | DwmFunctions.DWM_TNP_VISIBLE
-                | DwmFunctions.DWM_TNP_OPACITY
-                | DwmFunctions.DWM_TNP_RECTDESTINATION,
+            dwFlags = flags,
             fSourceClientAreaOnly = false,
             fVisible = true,
-            opacity = 255,
+            opacity = opacity,
             rcDestination = new DwmFunctions.Rect
             {
                 Left = destinationBounds.Left,
@@ -48,11 +71,37 @@ public sealed class WindowsDwmNativeThumbnailRenderer : INativeThumbnailRenderer
                 Right = destinationBounds.Right,
                 Bottom = destinationBounds.Bottom,
             },
+            rcSource = source,
         };
 
-        DwmFunctions.DwmUpdateThumbnailProperties(registeredThumbnailHandle, ref properties);
+        int updateResult = DwmFunctions.DwmUpdateThumbnailProperties(
+            registeredThumbnailHandle,
+            ref properties
+        );
+        if (updateResult != 0)
+        {
+            DwmFunctions.DwmUnregisterThumbnail(registeredThumbnailHandle);
+            Logger.Warning("DWM thumbnail update failed with result {Result}", updateResult);
+            return false;
+        }
+
         thumbnailHandle = registeredThumbnailHandle;
         return true;
+    }
+
+    /// <inheritdoc />
+    public bool TryUpdateOpacity(nint thumbnailHandle, byte opacity)
+    {
+        if (thumbnailHandle == 0)
+            return false;
+
+        var properties = new DwmFunctions.DWM_THUMBNAIL_PROPERTIES
+        {
+            dwFlags = DwmFunctions.DWM_TNP_OPACITY,
+            opacity = opacity,
+        };
+
+        return DwmFunctions.DwmUpdateThumbnailProperties(thumbnailHandle, ref properties) == 0;
     }
 
     /// <inheritdoc />

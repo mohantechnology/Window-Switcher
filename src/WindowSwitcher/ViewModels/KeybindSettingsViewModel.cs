@@ -225,7 +225,9 @@ public partial class KeybindSettingsViewModel : ObservableObject
 
         _capturedCombination = null;
         IsCapturing = true;
-        CapturePreview = "Press the shortcut to capture";
+        CapturePreview = KeybindBuiltInTargets.IsHoverLocalTarget(selectedTarget.TargetId)
+            ? "Hold modifiers and scroll the mouse wheel"
+            : "Press the shortcut to capture";
         StatusMessage = string.Empty;
     }
 

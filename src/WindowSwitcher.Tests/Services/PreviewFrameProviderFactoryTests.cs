@@ -217,5 +217,9 @@ public sealed class PreviewFrameProviderFactoryTests
             string windowTitle,
             CancellationToken cancellationToken = default
         ) => Task.FromResult(true);
+
+        public override Task<string?> TryGetForegroundWindowIdAsync(
+            CancellationToken cancellationToken = default
+        ) => Task.FromResult<string?>(null);
     }
 }

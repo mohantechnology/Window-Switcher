@@ -15,14 +15,24 @@ internal interface IFloatingWindowSettingsService
     void Save(WindowConfig windowConfig);
 }
 
-internal sealed record FloatingWindowBehaviorSettings(bool MoveWindows, bool FocusOnHover);
+internal sealed record FloatingWindowBehaviorSettings(
+    bool MoveWindows,
+    bool FocusOnHover,
+    bool ChangeSizeOnHover,
+    bool ChangeOpacityOnHover
+);
 
 internal sealed record FloatingWindowAppearanceSettings(
     bool ResizeWindows,
     bool UseFixedWindowSize,
+    bool UseDefaultWindowSize,
+    bool LinkPreviewAspectRatio,
     int WindowWidth,
     int WindowHeight,
-    string PreviewHighlightColor
+    string PreviewHighlightColor,
+    double DefaultPreviewOpacity,
+    int PreviewFrameRate,
+    int FloatingWindowLabelFontSize
 );
 
 internal sealed class ConfigFileFloatingWindowSettingsService : IFloatingWindowSettingsService
@@ -40,7 +50,9 @@ internal sealed class ConfigFileFloatingWindowSettingsService : IFloatingWindowS
             .GetInstance()
             .ReadConfig(config => new FloatingWindowBehaviorSettings(
                 config.MoveWindows,
-                config.FocusOnHover
+                config.FocusOnHover,
+                config.ChangeSizeOnHover,
+                config.ChangeOpacityOnHover
             ));
     }
 
@@ -51,9 +63,14 @@ internal sealed class ConfigFileFloatingWindowSettingsService : IFloatingWindowS
             .ReadConfig(config => new FloatingWindowAppearanceSettings(
                 config.ResizeWindows,
                 config.UseFixedWindowSize,
+                config.UseDefaultWindowSize,
+                config.LinkPreviewAspectRatio,
                 config.WindowWidth,
                 config.WindowHeight,
-                config.PreviewHighlightColor
+                config.PreviewHighlightColor,
+                config.DefaultPreviewOpacity,
+                config.PreviewFrameRate,
+                config.FloatingWindowLabelFontSize
             ));
     }
 

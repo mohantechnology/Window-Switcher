@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Serilog;
+using WindowSwitcher.Lib.Data.Platform;
+using WindowSwitcher.Lib.Data.Platform.Autostart.Abstractions;
 using WindowSwitcher.Lib.Models;
 using WindowSwitcher.ViewModels.Abstractions;
 
@@ -8,35 +12,78 @@ namespace WindowSwitcher.ViewModels;
 
 public class SettingsViewModel : ObservableObject
 {
+    private static readonly ILogger Logger = Log.ForContext<SettingsViewModel>();
+
     private readonly ISettingsRepository _settingsRepository;
+    private readonly IAutoStartService _autoStartService;
     private readonly Action _applyAction;
     private readonly Action<string> _applyPreviewHighlightColorAction;
+    private readonly Action<double> _applyDefaultPreviewOpacityAction;
+    private bool _autoStartInBackground;
+    private bool _isUpdatingAutoStart;
+    private string _autoStartError = string.Empty;
 
     public SettingsViewModel(
         ISettingsRepository settingsRepository,
+        IAutoStartService autoStartService,
         Action applyAction,
-        Action<string> applyPreviewHighlightColorAction
+        Action<string> applyPreviewHighlightColorAction,
+        Action<double> applyDefaultPreviewOpacityAction
     )
     {
         ArgumentNullException.ThrowIfNull(settingsRepository);
+        ArgumentNullException.ThrowIfNull(autoStartService);
         ArgumentNullException.ThrowIfNull(applyAction);
         ArgumentNullException.ThrowIfNull(applyPreviewHighlightColorAction);
+        ArgumentNullException.ThrowIfNull(applyDefaultPreviewOpacityAction);
 
         _settingsRepository = settingsRepository;
+        _autoStartService = autoStartService;
         _applyAction = applyAction;
         _applyPreviewHighlightColorAction = applyPreviewHighlightColorAction;
+        _applyDefaultPreviewOpacityAction = applyDefaultPreviewOpacityAction;
+        _autoStartInBackground = _settingsRepository.Read(config => config.AutoStartInBackground);
     }
 
     public bool EnablePreviews
     {
         get => ReadSetting(config => config.EnablePreviews);
+        set
+        {
+            bool updated = false;
+            _settingsRepository.Update(config =>
+            {
+                if (config.EnablePreviews == value)
+                    return;
+
+                config.EnablePreviews = value;
+                foreach (WindowConfig? windowConfig in config.FloatingWindowsConfig)
+                {
+                    if (windowConfig is null)
+                        continue;
+                    windowConfig.LivePreviewOverride = null;
+                }
+
+                updated = true;
+            });
+
+            if (!updated)
+                return;
+
+            OnPropertyChanged();
+            _applyAction();
+        }
+    }
+
+    public bool EnablePinFocusedWindow
+    {
+        get => ReadSetting(config => config.EnablePinFocusedWindow);
         set =>
             UpdateSetting(
-                nameof(EnablePreviews),
+                nameof(EnablePinFocusedWindow),
                 value,
-                config => config.EnablePreviews,
-                (config, currentValue) => config.EnablePreviews = currentValue,
-                applyToWindows: true
+                config => config.EnablePinFocusedWindow,
+                (config, currentValue) => config.EnablePinFocusedWindow = currentValue
             );
     }
 
@@ -52,6 +99,30 @@ public class SettingsViewModel : ObservableObject
             );
     }
 
+    public bool AutoStartInBackground
+    {
+        get => _autoStartInBackground;
+        set
+        {
+            if (_isUpdatingAutoStart || _autoStartInBackground == value)
+                return;
+
+            _ = SetAutoStartInBackgroundAsync(value);
+        }
+    }
+
+    public string AutoStartError
+    {
+        get => _autoStartError;
+        private set
+        {
+            if (SetProperty(ref _autoStartError, value ?? string.Empty))
+                OnPropertyChanged(nameof(HasAutoStartError));
+        }
+    }
+
+    public bool HasAutoStartError => !string.IsNullOrWhiteSpace(AutoStartError);
+
     public bool ResizeWindows
     {
         get => ReadSetting(config => config.ResizeWindows);
@@ -66,6 +137,8 @@ public class SettingsViewModel : ObservableObject
     }
 
     public bool CanEditResizeWindows => !UseFixedWindowSize;
+
+    public bool CanEditWindowSize => UseFixedWindowSize || UseDefaultWindowSize;
 
     public bool MoveWindows
     {
@@ -91,6 +164,98 @@ public class SettingsViewModel : ObservableObject
             );
     }
 
+    public bool ChangeSizeOnHover
+    {
+        get => ReadSetting(config => config.ChangeSizeOnHover);
+        set =>
+            UpdateSetting(
+                nameof(ChangeSizeOnHover),
+                value,
+                config => config.ChangeSizeOnHover,
+                (config, currentValue) => config.ChangeSizeOnHover = currentValue
+            );
+    }
+
+    public bool ChangeOpacityOnHover
+    {
+        get => ReadSetting(config => config.ChangeOpacityOnHover);
+        set =>
+            UpdateSetting(
+                nameof(ChangeOpacityOnHover),
+                value,
+                config => config.ChangeOpacityOnHover,
+                (config, currentValue) => config.ChangeOpacityOnHover = currentValue
+            );
+    }
+
+    public double DefaultPreviewOpacity
+    {
+        get => ReadSetting(config => config.DefaultPreviewOpacity);
+        set
+        {
+            double clamped = Math.Clamp(
+                value,
+                FloatingPreviewHoverAdjustment.MinOpacity,
+                FloatingPreviewHoverAdjustment.MaxOpacity
+            );
+
+            bool updated = false;
+            _settingsRepository.Update(config =>
+            {
+                bool opacityChanged =
+                    Math.Abs(config.DefaultPreviewOpacity - clamped) >= double.Epsilon;
+                bool floatingChanged = false;
+                foreach (WindowConfig? windowConfig in config.FloatingWindowsConfig)
+                {
+                    if (windowConfig is null)
+                        continue;
+                    if (Math.Abs(windowConfig.PreviewOpacity - clamped) < double.Epsilon)
+                        continue;
+                    windowConfig.PreviewOpacity = clamped;
+                    floatingChanged = true;
+                }
+
+                if (!opacityChanged && !floatingChanged)
+                    return;
+
+                config.DefaultPreviewOpacity = clamped;
+                updated = true;
+            });
+
+            if (!updated)
+                return;
+
+            OnPropertyChanged();
+            _applyDefaultPreviewOpacityAction(clamped);
+        }
+    }
+
+    public int PreviewFrameRate
+    {
+        get => ReadSetting(config => config.PreviewFrameRate);
+        set =>
+            UpdateSetting(
+                nameof(PreviewFrameRate),
+                Math.Clamp(value, min: 0, max: 30),
+                config => config.PreviewFrameRate,
+                (config, currentValue) => config.PreviewFrameRate = currentValue,
+                applyToWindows: true
+            );
+    }
+
+    public int FloatingWindowLabelFontSize
+    {
+        get => ReadSetting(config => config.FloatingWindowLabelFontSize);
+        set =>
+            UpdateSetting(
+                nameof(FloatingWindowLabelFontSize),
+                FloatingWindowLabelLayout.ClampFontSize(value),
+                config => config.FloatingWindowLabelFontSize,
+                (config, currentValue) => config.FloatingWindowLabelFontSize = currentValue,
+                applyToWindows: true
+            );
+    }
+
     public bool UseFixedWindowSize
     {
         get => ReadSetting(config => config.UseFixedWindowSize);
@@ -104,8 +269,39 @@ public class SettingsViewModel : ObservableObject
                 applyToWindows: true
             );
             if (updated)
+            {
                 OnPropertyChanged(nameof(CanEditResizeWindows));
+                OnPropertyChanged(nameof(CanEditWindowSize));
+            }
         }
+    }
+
+    public bool UseDefaultWindowSize
+    {
+        get => ReadSetting(config => config.UseDefaultWindowSize);
+        set
+        {
+            bool updated = UpdateSetting(
+                nameof(UseDefaultWindowSize),
+                value,
+                config => config.UseDefaultWindowSize,
+                (config, currentValue) => config.UseDefaultWindowSize = currentValue
+            );
+            if (updated)
+                OnPropertyChanged(nameof(CanEditWindowSize));
+        }
+    }
+
+    public bool LinkPreviewAspectRatio
+    {
+        get => ReadSetting(config => config.LinkPreviewAspectRatio);
+        set =>
+            UpdateSetting(
+                nameof(LinkPreviewAspectRatio),
+                value,
+                config => config.LinkPreviewAspectRatio,
+                (config, currentValue) => config.LinkPreviewAspectRatio = currentValue
+            );
     }
 
     public int WindowWidth
@@ -117,7 +313,7 @@ public class SettingsViewModel : ObservableObject
                 value,
                 config => config.WindowWidth,
                 (config, currentValue) => config.WindowWidth = currentValue,
-                applyToWindows: true
+                applyToWindows: UseFixedWindowSize
             );
     }
 
@@ -130,7 +326,7 @@ public class SettingsViewModel : ObservableObject
                 value,
                 config => config.WindowHeight,
                 (config, currentValue) => config.WindowHeight = currentValue,
-                applyToWindows: true
+                applyToWindows: UseFixedWindowSize
             );
     }
 
@@ -165,6 +361,33 @@ public class SettingsViewModel : ObservableObject
                 _applyAction();
                 OnPropertyChanged();
             }
+        }
+    }
+
+    private async Task SetAutoStartInBackgroundAsync(bool value)
+    {
+        bool previous = _autoStartInBackground;
+        _isUpdatingAutoStart = true;
+        _autoStartInBackground = value;
+        OnPropertyChanged(nameof(AutoStartInBackground));
+        AutoStartError = string.Empty;
+
+        try
+        {
+            // Stay on the UI synchronization context so bindable properties update safely.
+            await _autoStartService.SetEnabledAsync(value);
+            _settingsRepository.Update(config => config.AutoStartInBackground = value);
+        }
+        catch (Exception exception)
+        {
+            Logger.Warning(exception, "Auto-start preference could not be applied");
+            _autoStartInBackground = previous;
+            OnPropertyChanged(nameof(AutoStartInBackground));
+            AutoStartError = "Could not update auto-start. Check permissions and try again.";
+        }
+        finally
+        {
+            _isUpdatingAutoStart = false;
         }
     }
 

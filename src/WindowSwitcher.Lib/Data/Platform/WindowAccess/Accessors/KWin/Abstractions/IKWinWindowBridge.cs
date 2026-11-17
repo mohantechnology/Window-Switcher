@@ -17,4 +17,11 @@ public interface IKWinWindowBridge : IDBusObject
     /// <param name="requestId">Identifier of the activation request.</param>
     /// <param name="activated"><see langword="true" /> when the window was found and activated.</param>
     Task CompleteActivationAsync(string requestId, bool activated);
+
+    /// <summary>Receives the outcome of a foreground-window query script.</summary>
+    /// <param name="requestId">Identifier of the foreground query request.</param>
+    /// <param name="windowId">
+    /// KWin <c>internalId</c> of the focused native window, or an empty string when none applies.
+    /// </param>
+    Task CompleteForegroundQueryAsync(string requestId, string windowId);
 }

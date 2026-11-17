@@ -1,7 +1,9 @@
 using Newtonsoft.Json;
 using Serilog;
+using WindowSwitcher.Lib.Data.Platform;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Models;
 using WindowSwitcher.Lib.Data.Platform.Keybinds.Utilities;
+using WindowSwitcher.Lib.Data.Platform.WindowAccess.PreviewFrames.Abstractions;
 using WindowSwitcher.Lib.Models;
 
 namespace WindowSwitcher.Lib.Data;
@@ -534,6 +536,17 @@ public class ConfigFileAccessor
         else
             config.TelemetryInstallationId = Guid.NewGuid().ToString("D");
 
+        config.DefaultPreviewOpacity = Math.Clamp(
+            config.DefaultPreviewOpacity,
+            FloatingPreviewHoverAdjustment.MinOpacity,
+            FloatingPreviewHoverAdjustment.MaxOpacity
+        );
+        config.PreviewFrameRate = PreviewFrameTiming.Clamp(config.PreviewFrameRate);
+        PreviewFrameTiming.SetFramesPerSecond(config.PreviewFrameRate);
+        config.FloatingWindowLabelFontSize = FloatingWindowLabelLayout.ClampFontSize(
+            config.FloatingWindowLabelFontSize
+        );
+
         config.FloatingWindowsConfig = (config.FloatingWindowsConfig ?? [])
             .Where(windowConfig => windowConfig is not null)
             .Select(windowConfig =>
@@ -541,6 +554,14 @@ public class ConfigFileAccessor
                 WindowConfig clone = windowConfig!.Clone();
                 if (string.IsNullOrWhiteSpace(clone.ConfigKey))
                     clone.ConfigKey = CreateConfigKey(clone);
+                if (
+                    clone.PreviewOpacity < FloatingPreviewHoverAdjustment.MinOpacity
+                    || clone.PreviewOpacity > FloatingPreviewHoverAdjustment.MaxOpacity
+                )
+                {
+                    clone.PreviewOpacity = config.DefaultPreviewOpacity;
+                }
+
                 return clone;
             })
             .Cast<WindowConfig?>()
@@ -550,6 +571,21 @@ public class ConfigFileAccessor
             .Build(config.WindowKeybindTargets)
             .Targets.Select(KeybindCatalogBuilder.CloneTarget)
             .ToList();
+        EnsureDefaultPinFocusedWindowShortcut(config);
+        EnsureDefaultHoverMouseWheelShortcut(
+            config,
+            KeybindBuiltInTargets.ChangeFloatingSizeOnHoverTargetId,
+            KeybindBuiltInTargets.ChangeFloatingSizeOnHoverDisplayName,
+            ctrl: true,
+            shift: false
+        );
+        EnsureDefaultHoverMouseWheelShortcut(
+            config,
+            KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverTargetId,
+            KeybindBuiltInTargets.ChangeFloatingOpacityOnHoverDisplayName,
+            ctrl: false,
+            shift: true
+        );
 
         config.ScreenCastRestoreTokens = (config.ScreenCastRestoreTokens ?? [])
             .Where(entry =>
@@ -558,6 +594,89 @@ public class ConfigFileAccessor
             .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
 
         return config;
+    }
+
+    private static void EnsureDefaultPinFocusedWindowShortcut(ConfigFile config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        WindowKeybindTargetConfig? pinTarget = config.WindowKeybindTargets.FirstOrDefault(target =>
+            string.Equals(
+                target.TargetId,
+                KeybindBuiltInTargets.PinFocusedWindowTargetId,
+                StringComparison.Ordinal
+            )
+        );
+        if (pinTarget is not null)
+        {
+            if (string.IsNullOrWhiteSpace(pinTarget.DisplayLabel))
+                pinTarget.DisplayLabel = KeybindBuiltInTargets.PinFocusedWindowDisplayName;
+            return;
+        }
+
+        var shortcuts = new List<WindowKeybindShortcut>();
+        var defaultCombination = new KeyCombination
+        {
+            Meta = true,
+            Alt = true,
+            Key = KeybindPrimaryKey.Q,
+        };
+        KeybindCatalog catalog = KeybindCatalogBuilder.Build(config.WindowKeybindTargets);
+        if (!catalog.TryResolveTarget(defaultCombination, out _))
+            shortcuts.Add(new WindowKeybindShortcut { Combination = defaultCombination });
+
+        config.WindowKeybindTargets.Add(
+            new WindowKeybindTargetConfig
+            {
+                TargetId = KeybindBuiltInTargets.PinFocusedWindowTargetId,
+                DisplayLabel = KeybindBuiltInTargets.PinFocusedWindowDisplayName,
+                Shortcuts = shortcuts,
+            }
+        );
+    }
+
+    private static void EnsureDefaultHoverMouseWheelShortcut(
+        ConfigFile config,
+        string targetId,
+        string displayLabel,
+        bool ctrl,
+        bool shift
+    )
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayLabel);
+
+        WindowKeybindTargetConfig? existingTarget = config.WindowKeybindTargets.FirstOrDefault(
+            target => string.Equals(target.TargetId, targetId, StringComparison.Ordinal)
+        );
+        if (existingTarget is not null)
+        {
+            if (string.IsNullOrWhiteSpace(existingTarget.DisplayLabel))
+                existingTarget.DisplayLabel = displayLabel;
+            return;
+        }
+
+        var shortcuts = new List<WindowKeybindShortcut>();
+        var defaultCombination = new KeyCombination
+        {
+            Meta = true,
+            Ctrl = ctrl,
+            Shift = shift,
+            Key = KeybindPrimaryKey.MouseWheel,
+        };
+        KeybindCatalog catalog = KeybindCatalogBuilder.Build(config.WindowKeybindTargets);
+        if (!catalog.TryResolveTarget(defaultCombination, out _))
+            shortcuts.Add(new WindowKeybindShortcut { Combination = defaultCombination });
+
+        config.WindowKeybindTargets.Add(
+            new WindowKeybindTargetConfig
+            {
+                TargetId = targetId,
+                DisplayLabel = displayLabel,
+                Shortcuts = shortcuts,
+            }
+        );
     }
 
     private static ConfigFile CloneConfig(ConfigFile config)
@@ -569,14 +688,23 @@ public class ConfigFileAccessor
             ResizeWindows = config.ResizeWindows,
             MoveWindows = config.MoveWindows,
             StartMinimized = config.StartMinimized,
+            AutoStartInBackground = config.AutoStartInBackground,
             SentryDsn = config.SentryDsn,
             TelemetryInstallationId = config.TelemetryInstallationId,
             UseFixedWindowSize = config.UseFixedWindowSize,
+            UseDefaultWindowSize = config.UseDefaultWindowSize,
+            LinkPreviewAspectRatio = config.LinkPreviewAspectRatio,
             FocusOnHover = config.FocusOnHover,
+            ChangeSizeOnHover = config.ChangeSizeOnHover,
+            ChangeOpacityOnHover = config.ChangeOpacityOnHover,
+            DefaultPreviewOpacity = config.DefaultPreviewOpacity,
+            PreviewFrameRate = config.PreviewFrameRate,
             WindowWidth = config.WindowWidth,
             WindowHeight = config.WindowHeight,
             PreviewHighlightColor = config.PreviewHighlightColor,
             EnablePreviews = config.EnablePreviews,
+            FloatingWindowLabelFontSize = config.FloatingWindowLabelFontSize,
+            EnablePinFocusedWindow = config.EnablePinFocusedWindow,
             WhitelistPrefixes = config.WhitelistPrefixes.ToList(),
             BlacklistPrefixes = config.BlacklistPrefixes.ToList(),
             FloatingWindowsConfig = config

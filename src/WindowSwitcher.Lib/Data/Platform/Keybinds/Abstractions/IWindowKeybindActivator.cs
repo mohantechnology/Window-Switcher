@@ -12,6 +12,12 @@ public interface IWindowKeybindActivator
     event EventHandler<string>? WindowActivated;
 
     /// <summary>
+    /// Raised when a pin-focused-window keybind requests a floating preview for a window.
+    /// Event data contains the focused <c>WindowId</c>.
+    /// </summary>
+    event EventHandler<string>? WindowPinRequested;
+
+    /// <summary>
     /// Asynchronously tries to activate a matching runtime window for the target id.
     /// </summary>
     /// <param name="targetId">Stable target id to activate.</param>
